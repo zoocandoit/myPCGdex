@@ -29,8 +29,8 @@ Pokemon card scanner and collection manager. Scan your physical Pokemon cards to
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/zoocandoit/pokeScan.git
-cd pokeScan
+git clone https://github.com/zoocandoit/myPCGdex.git
+cd myPCGdex
 ```
 
 2. Install dependencies:
