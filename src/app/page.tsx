@@ -9,7 +9,7 @@ export default function HomePage() {
     <div className="min-h-screen pb-16">
       <main className="container mx-auto px-4 py-6">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold tracking-tight">PokeScan</h1>
+          <h1 className="text-3xl font-bold tracking-tight">myPCGdex</h1>
           <p className="mt-2 text-muted-foreground">
             Scan, identify, and manage your Pokemon cards
           </p>

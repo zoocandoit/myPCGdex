@@ -1,4 +1,4 @@
-# PokeScan
+# myPCGdex
 
 Pokemon card scanner and collection manager. Scan your physical Pokemon cards to identify them, check market prices, and manage your inventory.
 

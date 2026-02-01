@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PokeScan - Pokemon Card Scanner",
+  title: "myPCGdex - Pokemon Card Collection",
   description: "Scan, identify, and manage your Pokemon card collection",
 };
 
