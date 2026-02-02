@@ -77,10 +77,12 @@ export async function signup(
   });
 
   if (error) {
+    console.error("[Signup Error]", error.message, error);
     if (error.message.includes("already registered")) {
       return { error: "이미 가입된 이메일입니다" };
     }
-    return { error: "회원가입에 실패했습니다. 다시 시도해주세요" };
+    // 개발 중에는 실제 에러 메시지 표시
+    return { error: `회원가입 실패: ${error.message}` };
   }
 
   revalidatePath("/", "layout");
