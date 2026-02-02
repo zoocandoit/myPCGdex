@@ -37,17 +37,29 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Protected routes check
+  const pathname = request.nextUrl.pathname;
+
+  // Protected routes check - redirect unauthenticated users to login
   const protectedPaths = ["/scan", "/collection", "/profile"];
   const isProtectedPath = protectedPaths.some((path) =>
-    request.nextUrl.pathname.startsWith(path)
+    pathname.startsWith(path)
   );
 
   if (isProtectedPath && !user) {
-    // Redirect unauthenticated users to login
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("redirectTo", request.nextUrl.pathname);
+    url.searchParams.set("redirectTo", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // Auth routes check - redirect authenticated users to /scan
+  const authPaths = ["/login", "/signup"];
+  const isAuthPath = authPaths.some((path) => pathname === path);
+
+  if (isAuthPath && user) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/scan";
+    url.searchParams.delete("redirectTo");
     return NextResponse.redirect(url);
   }
 

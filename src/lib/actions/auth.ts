@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSafeRedirectPath } from "@/lib/utils/redirect";
 import { z } from "zod";
 
 // Validation schemas
@@ -48,8 +49,9 @@ export async function login(
   }
 
   const redirectTo = formData.get("redirectTo") as string;
+  const safeRedirect = getSafeRedirectPath(redirectTo);
   revalidatePath("/", "layout");
-  redirect(redirectTo || "/scan");
+  redirect(safeRedirect);
 }
 
 export async function signup(
@@ -94,11 +96,12 @@ export async function logout(): Promise<void> {
 
 export async function signInWithGoogle(redirectTo?: string): Promise<void> {
   const supabase = await createClient();
+  const safeRedirect = getSafeRedirectPath(redirectTo);
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/callback?next=${redirectTo || "/scan"}`,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/callback?next=${safeRedirect}`,
     },
   });
 
