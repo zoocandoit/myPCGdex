@@ -16,8 +16,8 @@ export default async function ProtectedLayout({
   } = await supabase.auth.getUser();
 
   if (!user) {
-    // Redirect unauthenticated users to home page
-    redirect("/");
+    // Redirect unauthenticated users to login page
+    redirect("/login");
   }
 
   return (
