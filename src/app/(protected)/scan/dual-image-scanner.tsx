@@ -13,19 +13,39 @@ import {
   ArrowRight,
   RotateCcw,
   Check,
+  RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 import { uploadCardImage } from "@/lib/actions/storage";
 import { VisionResponse, ScanResult } from "@/lib/types/vision";
 import { ResultForm } from "./result-form";
 import { TCGCard } from "@/lib/tcg/types";
+import {
+  preprocessImage,
+  validateImageFile,
+  isHeicFile,
+} from "@/lib/image/preprocess";
 
-type Step = "front" | "back" | "review" | "uploading" | "analyzing" | "done";
+type Step =
+  | "front"
+  | "back"
+  | "converting"
+  | "review"
+  | "uploading"
+  | "analyzing"
+  | "done";
 
 interface CardImages {
   front: string | null;
   back: string | null;
   frontMimeType: string;
   backMimeType: string;
+}
+
+interface ProcessingError {
+  message: string;
+  canRetry: boolean;
+  step: "front" | "back" | "upload" | "analyze";
 }
 
 export function DualImageScanner() {
@@ -38,65 +58,126 @@ export function DualImageScanner() {
     backMimeType: "image/jpeg",
   });
   const [result, setResult] = useState<ScanResult | null>(null);
-  const [selectedCard, setSelectedCard] = useState<TCGCard | null>(null);
-  const [uploadedPaths, setUploadedPaths] = useState<{
+  // TODO: Phase 5 - use selectedCard and uploadedPaths for saving to collection
+  const [_selectedCard, setSelectedCard] = useState<TCGCard | null>(null);
+  const [_uploadedPaths, setUploadedPaths] = useState<{
     front?: string;
     back?: string;
   }>({});
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => {
+    // Initial value from SSR-safe check
+    if (typeof window === "undefined") return false;
+    return "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  });
+  const [processingError, setProcessingError] =
+    useState<ProcessingError | null>(null);
+  const [convertingTarget, setConvertingTarget] = useState<
+    "front" | "back" | null
+  >(null);
+  const pendingFileRef = useRef<File | null>(null);
 
+  // Re-check on mount in case SSR value was wrong
   useEffect(() => {
-    // Check if device is mobile (touch device)
     const isTouchDevice =
       "ontouchstart" in window || navigator.maxTouchPoints > 0;
-    setIsMobile(isTouchDevice);
+    if (isTouchDevice !== isMobile) {
+      setIsMobile(isTouchDevice);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleFileSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      const validTypes = ["image/jpeg", "image/png", "image/webp", "image/heic"];
-      if (!validTypes.includes(file.type)) {
-        alert("Please select a valid image file (JPEG, PNG, WebP, or HEIC)");
+  const processFile = useCallback(
+    async (file: File, target: "front" | "back") => {
+      // Validate file first
+      const validation = validateImageFile(file);
+      if (!validation.valid) {
+        setProcessingError({
+          message: validation.error || "Invalid file",
+          canRetry: true,
+          step: target,
+        });
         return;
       }
 
-      if (file.size > 10 * 1024 * 1024) {
-        alert("File size must be less than 10MB");
-        return;
+      // Check if we need to convert (HEIC or large file)
+      const needsConversion =
+        isHeicFile(file) ||
+        file.size > 2 * 1024 * 1024 || // > 2MB
+        !["image/jpeg", "image/png", "image/webp"].includes(file.type);
+
+      if (needsConversion) {
+        setConvertingTarget(target);
+        setStep("converting");
       }
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const imageData = event.target?.result as string;
+      try {
+        // Preprocess the image (convert HEIC, resize, fix orientation)
+        const processed = await preprocessImage(file, {
+          maxDimension: 1400,
+          quality: 0.85,
+          targetFormat: "image/jpeg",
+        });
 
-        if (step === "front") {
+        if (target === "front") {
           setImages((prev) => ({
             ...prev,
-            front: imageData,
-            frontMimeType: file.type,
+            front: processed.dataUrl,
+            frontMimeType: processed.mimeType,
           }));
           setStep("back");
-        } else if (step === "back") {
+        } else {
           setImages((prev) => ({
             ...prev,
-            back: imageData,
-            backMimeType: file.type,
+            back: processed.dataUrl,
+            backMimeType: processed.mimeType,
           }));
           setStep("review");
         }
-      };
-      reader.readAsDataURL(file);
+
+        setProcessingError(null);
+        setConvertingTarget(null);
+      } catch (error) {
+        console.error("[Image Processing Error]", error);
+        setProcessingError({
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to process image. Please try a different photo.",
+          canRetry: true,
+          step: target,
+        });
+        setStep(target);
+        setConvertingTarget(null);
+      }
+    },
+    []
+  );
+
+  const handleFileSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
 
       // Reset input for next selection
       if (inputRef.current) {
         inputRef.current.value = "";
       }
+
+      // Determine target based on current step
+      const target = step === "front" || step === "converting" ? "front" : "back";
+      pendingFileRef.current = file;
+
+      await processFile(file, target);
     },
-    [step]
+    [step, processFile]
   );
+
+  const retryProcessing = useCallback(async () => {
+    if (!pendingFileRef.current || !processingError) return;
+
+    setProcessingError(null);
+    await processFile(pendingFileRef.current, processingError.step as "front" | "back");
+  }, [processingError, processFile]);
 
   const resetAll = useCallback(() => {
     setImages({
@@ -109,22 +190,27 @@ export function DualImageScanner() {
     setResult(null);
     setSelectedCard(null);
     setUploadedPaths({});
+    setProcessingError(null);
+    pendingFileRef.current = null;
   }, []);
 
   const retakeFront = useCallback(() => {
     setImages((prev) => ({ ...prev, front: null }));
     setStep("front");
+    setProcessingError(null);
   }, []);
 
   const retakeBack = useCallback(() => {
     setImages((prev) => ({ ...prev, back: null }));
     setStep("back");
+    setProcessingError(null);
   }, []);
 
   const analyzeCard = useCallback(async () => {
     if (!images.front || !images.back) return;
 
     setStep("uploading");
+    setProcessingError(null);
 
     try {
       // Upload front image
@@ -133,11 +219,12 @@ export function DualImageScanner() {
         images.frontMimeType
       );
       if (!frontResult.success || !frontResult.signedUrl) {
-        setResult({
-          success: false,
-          error: `Front image upload failed: ${frontResult.error}`,
+        setProcessingError({
+          message: frontResult.error || "Failed to upload front image",
+          canRetry: true,
+          step: "upload",
         });
-        setStep("done");
+        setStep("review");
         return;
       }
 
@@ -147,11 +234,12 @@ export function DualImageScanner() {
         images.backMimeType
       );
       if (!backResult.success) {
-        setResult({
-          success: false,
-          error: `Back image upload failed: ${backResult.error}`,
+        setProcessingError({
+          message: backResult.error || "Failed to upload back image",
+          canRetry: true,
+          step: "upload",
         });
-        setStep("done");
+        setStep("review");
         return;
       }
 
@@ -171,9 +259,19 @@ export function DualImageScanner() {
 
       if (!response.ok) {
         const errorData = await response.json();
+        const errorMessage = errorData.error || "Analysis failed";
+
+        // Provide actionable error messages
+        let actionableMessage = errorMessage;
+        if (errorMessage.includes("card number")) {
+          actionableMessage = "Could not read card number. Try taking a clearer photo with better lighting.";
+        } else if (errorMessage.includes("not a Pokemon card")) {
+          actionableMessage = "This doesn't appear to be a Pokemon card. Please scan a valid card.";
+        }
+
         setResult({
           success: false,
-          error: errorData.error || "Analysis failed",
+          error: actionableMessage,
           imageUrl: frontResult.signedUrl,
         });
         setStep("done");
@@ -191,11 +289,20 @@ export function DualImageScanner() {
       console.error("[Dual Scan Error]", error);
       setResult({
         success: false,
-        error: error instanceof Error ? error.message : "Scan failed",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Scan failed. Please check your connection and try again.",
       });
       setStep("done");
     }
   }, [images]);
+
+  const retryAnalysis = useCallback(() => {
+    setResult(null);
+    setStep("review");
+    setProcessingError(null);
+  }, []);
 
   const handleCardSelect = useCallback((card: TCGCard) => {
     setSelectedCard(card);
@@ -209,14 +316,16 @@ export function DualImageScanner() {
         return "Step 1: Upload Front of Card";
       case "back":
         return "Step 2: Upload Back of Card";
+      case "converting":
+        return "Processing Image...";
       case "review":
         return "Review Images";
       case "uploading":
-        return "Uploading...";
+        return "Uploading Images...";
       case "analyzing":
-        return "Analyzing...";
+        return "Analyzing Card...";
       case "done":
-        return "Analysis Complete";
+        return result?.success ? "Analysis Complete" : "Analysis Failed";
     }
   };
 
@@ -226,8 +335,16 @@ export function DualImageScanner() {
         return "Upload a clear photo of the front of your Pokemon card";
       case "back":
         return "Now upload a photo of the back of the same card";
+      case "converting":
+        return convertingTarget === "front"
+          ? "Converting front image..."
+          : "Converting back image...";
       case "review":
         return "Check both images before analyzing";
+      case "uploading":
+        return "Securely uploading your images...";
+      case "analyzing":
+        return "AI is reading the card details...";
       default:
         return "";
     }
@@ -239,7 +356,7 @@ export function DualImageScanner() {
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/heic"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
         capture={isMobile ? "environment" : undefined}
         onChange={handleFileSelect}
         className="hidden"
@@ -249,7 +366,7 @@ export function DualImageScanner() {
       <div className="flex items-center justify-center gap-2 text-sm">
         <div
           className={`flex h-6 w-6 items-center justify-center rounded-full ${
-            step === "front"
+            step === "front" || step === "converting"
               ? "bg-primary text-primary-foreground"
               : images.front
                 ? "bg-green-500 text-white"
@@ -276,11 +393,21 @@ export function DualImageScanner() {
             step === "review" || step === "uploading" || step === "analyzing"
               ? "bg-primary text-primary-foreground"
               : step === "done"
-                ? "bg-green-500 text-white"
+                ? result?.success
+                  ? "bg-green-500 text-white"
+                  : "bg-red-500 text-white"
                 : "bg-muted text-muted-foreground"
           }`}
         >
-          {step === "done" ? <Check className="h-4 w-4" /> : "3"}
+          {step === "done" ? (
+            result?.success ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <XCircle className="h-4 w-4" />
+            )
+          ) : (
+            "3"
+          )}
         </div>
       </div>
 
@@ -291,6 +418,50 @@ export function DualImageScanner() {
           <p className="text-sm text-muted-foreground">{getStepDescription()}</p>
         )}
       </div>
+
+      {/* Processing Error Banner */}
+      {processingError && step !== "done" && (
+        <Card className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+          <CardContent className="p-3">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+              <div className="flex-1">
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  {processingError.message}
+                </p>
+                {processingError.canRetry && (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-amber-700"
+                    onClick={retryProcessing}
+                  >
+                    <RefreshCw className="mr-1 h-3 w-3" />
+                    Try again
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Converting state */}
+      {step === "converting" && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center gap-4 py-12">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <div className="text-center">
+              <p className="font-medium text-muted-foreground">
+                Converting image...
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Optimizing for best results
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Upload area for front/back */}
       {(step === "front" || step === "back") && (
@@ -312,7 +483,9 @@ export function DualImageScanner() {
                       : "Upload Back Image"}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  {isMobile ? "Tap to open camera" : "JPEG, PNG, WebP, or HEIC (max 10MB)"}
+                  {isMobile
+                    ? "Tap to open camera"
+                    : "JPEG, PNG, WebP, or HEIC (max 10MB)"}
                 </p>
               </div>
             </button>
@@ -376,9 +549,16 @@ export function DualImageScanner() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center gap-4 py-12">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="text-muted-foreground">
-              {step === "uploading" ? "Uploading images..." : "Analyzing card..."}
-            </p>
+            <div className="text-center">
+              <p className="font-medium text-muted-foreground">
+                {step === "uploading" ? "Uploading images..." : "Analyzing card..."}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {step === "uploading"
+                  ? "Securely storing your photos"
+                  : "AI is reading card details"}
+              </p>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -386,10 +566,7 @@ export function DualImageScanner() {
       {/* Controls */}
       <div className="flex gap-2">
         {step === "front" && (
-          <Button
-            onClick={() => inputRef.current?.click()}
-            className="flex-1"
-          >
+          <Button onClick={() => inputRef.current?.click()} className="flex-1">
             {isMobile ? (
               <Camera className="mr-2 h-5 w-5" />
             ) : (
@@ -451,9 +628,20 @@ export function DualImageScanner() {
           ) : (
             <Card className="border-red-500">
               <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-red-600">
-                  <XCircle className="h-5 w-5" />
-                  <span>{result.error || "Analysis failed"}</span>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-start gap-2 text-red-600">
+                    <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                    <span>{result.error || "Analysis failed"}</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={retryAnalysis}
+                    className="self-start"
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Try Again with Same Images
+                  </Button>
                 </div>
               </CardContent>
             </Card>

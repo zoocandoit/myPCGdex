@@ -24,7 +24,8 @@ export function WebcamScanner() {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [state, setState] = useState<CaptureState>("idle");
   const [result, setResult] = useState<ScanResult | null>(null);
-  const [selectedCard, setSelectedCard] = useState<TCGCard | null>(null);
+  // TODO: Phase 5 - use selectedCard for saving to collection
+  const [_selectedCard, setSelectedCard] = useState<TCGCard | null>(null);
   const [facingMode, setFacingMode] = useState<"user" | "environment">(
     "environment"
   );

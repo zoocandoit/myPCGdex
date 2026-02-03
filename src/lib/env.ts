@@ -19,8 +19,9 @@ const serverEnvSchema = z.object({
 
 /**
  * Client-side environment variables (NEXT_PUBLIC_ prefix)
+ * Exported for potential client-side validation
  */
-const clientEnvSchema = z.object({
+export const clientEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
 });

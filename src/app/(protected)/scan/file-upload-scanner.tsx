@@ -23,7 +23,8 @@ export function FileUploadScanner() {
   const [mimeType, setMimeType] = useState<string>("image/jpeg");
   const [state, setState] = useState<UploadState>("idle");
   const [result, setResult] = useState<ScanResult | null>(null);
-  const [selectedCard, setSelectedCard] = useState<TCGCard | null>(null);
+  // TODO: Phase 5 - use selectedCard for saving to collection
+  const [_selectedCard, setSelectedCard] = useState<TCGCard | null>(null);
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {

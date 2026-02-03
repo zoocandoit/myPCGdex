@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { VisionRequestSchema, VisionResponseSchema } from "@/lib/types/vision";
+import {
+  validateStorageUrl,
+  safeParseVisionJson,
+} from "@/lib/vision/validators";
 
 const VISION_PROMPT = `You are a Pokemon card analyzer. Analyze this Pokemon card image and extract the following information.
 
@@ -20,6 +24,21 @@ Required JSON format:
 }
 
 Analyze the card and return ONLY the JSON object, nothing else.`;
+
+interface AnalysisLog {
+  provider: "openai" | "anthropic";
+  attempt: number;
+  success: boolean;
+  latencyMs: number;
+  error?: string;
+}
+
+function logAnalysis(log: AnalysisLog): void {
+  const level = log.success ? "info" : "warn";
+  console[level](
+    `[Vision API] provider=${log.provider} attempt=${log.attempt} success=${log.success} latency=${log.latencyMs}ms${log.error ? ` error="${log.error}"` : ""}`
+  );
+}
 
 async function analyzeWithOpenAI(imageUrl: string): Promise<unknown> {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -50,8 +69,9 @@ async function analyzeWithOpenAI(imageUrl: string): Promise<unknown> {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    console.error("[OpenAI API Error]", error);
+    // Log error for debugging but don't expose to client
+    const errorBody = await response.text();
+    console.error("[OpenAI Error Body]", errorBody);
     throw new Error(`OpenAI API error: ${response.status}`);
   }
 
@@ -62,18 +82,8 @@ async function analyzeWithOpenAI(imageUrl: string): Promise<unknown> {
     throw new Error("No response from OpenAI");
   }
 
-  // Parse JSON from response (handle potential markdown code blocks)
-  let jsonStr = content.trim();
-  if (jsonStr.startsWith("```json")) {
-    jsonStr = jsonStr.slice(7);
-  } else if (jsonStr.startsWith("```")) {
-    jsonStr = jsonStr.slice(3);
-  }
-  if (jsonStr.endsWith("```")) {
-    jsonStr = jsonStr.slice(0, -3);
-  }
-
-  return JSON.parse(jsonStr.trim());
+  // Parse JSON from response (handles code fences and edge cases)
+  return safeParseVisionJson(content);
 }
 
 async function analyzeWithAnthropic(imageUrl: string): Promise<unknown> {
@@ -122,8 +132,9 @@ async function analyzeWithAnthropic(imageUrl: string): Promise<unknown> {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    console.error("[Anthropic API Error]", error);
+    // Log error for debugging but don't expose to client
+    const errorBody = await response.text();
+    console.error("[Anthropic Error Body]", errorBody);
     throw new Error(`Anthropic API error: ${response.status}`);
   }
 
@@ -135,20 +146,12 @@ async function analyzeWithAnthropic(imageUrl: string): Promise<unknown> {
   }
 
   // Parse JSON from response
-  let jsonStr = content.trim();
-  if (jsonStr.startsWith("```json")) {
-    jsonStr = jsonStr.slice(7);
-  } else if (jsonStr.startsWith("```")) {
-    jsonStr = jsonStr.slice(3);
-  }
-  if (jsonStr.endsWith("```")) {
-    jsonStr = jsonStr.slice(0, -3);
-  }
-
-  return JSON.parse(jsonStr.trim());
+  return safeParseVisionJson(content);
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+
   try {
     // Verify authentication
     const supabase = await createClient();
@@ -157,6 +160,7 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (!user) {
+      console.warn("[Vision API] Unauthorized request");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -173,45 +177,91 @@ export async function POST(request: NextRequest) {
 
     const { imageUrl } = validated.data;
 
-    // Try OpenAI first, fall back to Anthropic
+    // SECURITY: Validate that the URL is from our Supabase Storage bucket
+    const urlValidation = validateStorageUrl(imageUrl);
+    if (!urlValidation.valid) {
+      console.warn(
+        `[Vision API] Invalid URL rejected: ${urlValidation.error}`
+      );
+      return NextResponse.json(
+        { error: urlValidation.error || "Invalid image URL" },
+        { status: 400 }
+      );
+    }
+
+    // Determine which provider to use
+    const useOpenAI = Boolean(process.env.OPENAI_API_KEY);
+    const useAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
+
+    if (!useOpenAI && !useAnthropic) {
+      return NextResponse.json(
+        { error: "No Vision API key configured" },
+        { status: 500 }
+      );
+    }
+
+    const provider = useOpenAI ? "openai" : "anthropic";
+    const analyzeFn = useOpenAI ? analyzeWithOpenAI : analyzeWithAnthropic;
+
+    // Retry logic
     let rawResult: unknown;
-    let retryCount = 0;
+    let lastError: string | undefined;
     const maxRetries = 2;
 
-    while (retryCount <= maxRetries) {
+    for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      const attemptStart = Date.now();
+
       try {
-        if (process.env.OPENAI_API_KEY) {
-          rawResult = await analyzeWithOpenAI(imageUrl);
-        } else if (process.env.ANTHROPIC_API_KEY) {
-          rawResult = await analyzeWithAnthropic(imageUrl);
-        } else {
-          return NextResponse.json(
-            { error: "No Vision API key configured" },
-            { status: 500 }
-          );
-        }
+        rawResult = await analyzeFn(imageUrl);
 
         // Validate response with Zod
         const result = VisionResponseSchema.safeParse(rawResult);
 
         if (result.success) {
+          logAnalysis({
+            provider,
+            attempt,
+            success: true,
+            latencyMs: Date.now() - attemptStart,
+          });
+
+          console.info(
+            `[Vision API] Success: totalLatency=${Date.now() - startTime}ms`
+          );
           return NextResponse.json(result.data);
         }
 
-        console.error("[Vision Response Validation Error]", result.error);
-        retryCount++;
-      } catch (parseError) {
-        console.error("[Vision Parse Error]", parseError);
-        retryCount++;
+        lastError = "Response validation failed";
+        logAnalysis({
+          provider,
+          attempt,
+          success: false,
+          latencyMs: Date.now() - attemptStart,
+          error: lastError,
+        });
+      } catch (error) {
+        lastError =
+          error instanceof Error ? error.message : "Unknown error";
+        logAnalysis({
+          provider,
+          attempt,
+          success: false,
+          latencyMs: Date.now() - attemptStart,
+          error: lastError,
+        });
       }
     }
 
+    console.error(
+      `[Vision API] Failed after ${maxRetries + 1} attempts: ${lastError}`
+    );
     return NextResponse.json(
       { error: "Failed to analyze card after multiple attempts" },
       { status: 500 }
     );
   } catch (error) {
-    console.error("[Vision API Error]", error);
+    const latencyMs = Date.now() - startTime;
+    console.error(`[Vision API] Error: latency=${latencyMs}ms`, error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Analysis failed" },
       { status: 500 }

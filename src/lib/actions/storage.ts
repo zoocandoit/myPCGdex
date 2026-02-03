@@ -5,7 +5,22 @@ import { UploadResult } from "@/lib/types/vision";
 
 const BUCKET_NAME = "card-uploads";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"];
+const ALLOWED_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+];
+
+// Map MIME types to file extensions
+const MIME_TO_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/heic": "heic",
+  "image/heif": "heif",
+};
 
 export async function uploadCardImage(
   base64Data: string,
@@ -37,9 +52,10 @@ export async function uploadCardImage(
       return { success: false, error: "File too large (max 10MB)" };
     }
 
-    // Generate unique filename
-    const extension = mimeType.split("/")[1] || "jpg";
-    const filename = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
+    // Generate unique filename with safe extension
+    const extension = MIME_TO_EXT[mimeType] || "jpg";
+    const uuid = crypto.randomUUID();
+    const filename = `${Date.now()}-${uuid}.${extension}`;
     const path = `${user.id}/${filename}`;
 
     // Upload to Supabase Storage

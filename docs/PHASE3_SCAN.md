@@ -59,27 +59,38 @@ ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key
 
 ## 스캔 플로우
 
-### 1. 카메라 촬영 모드
+### 듀얼 이미지 스캔 (앞면/뒷면)
 
 ```
-사용자 → 카메라 촬영 → 미리보기 → [다시찍기 | 분석]
-                                     ↓
-                              Supabase Storage 업로드
-                                     ↓
-                              Signed URL 생성
-                                     ↓
-                              Vision API 호출
-                                     ↓
-                              결과 표시
+Step 1: 앞면 이미지 업로드/촬영
+    ↓
+[HEIC 감지 시] → JPEG 변환 + 리사이즈
+    ↓
+Step 2: 뒷면 이미지 업로드/촬영
+    ↓
+[HEIC 감지 시] → JPEG 변환 + 리사이즈
+    ↓
+Step 3: 리뷰 → [다시찍기 | 분석]
+    ↓
+Supabase Storage 업로드 (앞면 + 뒷면)
+    ↓
+Signed URL 생성
+    ↓
+Vision API 호출 (앞면 이미지 분석)
+    ↓
+결과 표시 + TCG API 검색
 ```
 
-### 2. 파일 업로드 모드
+### 이미지 전처리 (클라이언트)
 
-```
-사용자 → 파일 선택 → 미리보기 → [취소 | 분석]
-                                  ↓
-                           (동일한 플로우)
-```
+iPhone에서 촬영한 HEIC 이미지는 업로드 전에 자동으로 JPEG로 변환됩니다:
+
+- **HEIC/HEIF 변환**: `heic2any` 라이브러리 사용
+- **리사이즈**: 최대 1400px (긴 변 기준)
+- **EXIF 방향 보정**: 회전된 이미지 자동 정규화
+- **품질**: 85% JPEG 압축
+
+변환 중에는 "Converting..." 상태가 표시됩니다.
 
 ---
 
@@ -128,17 +139,24 @@ src/
 │   ├── (protected)/
 │   │   └── scan/
 │   │       ├── page.tsx              # 스캔 페이지
-│   │       ├── webcam-scanner.tsx    # 카메라 촬영 컴포넌트
-│   │       └── file-upload-scanner.tsx # 파일 업로드 컴포넌트
+│   │       ├── scan-tabs.tsx         # 스캔 탭 컨테이너
+│   │       ├── dual-image-scanner.tsx # 앞면/뒷면 듀얼 스캐너
+│   │       └── result-form.tsx       # 분석 결과 폼
 │   └── api/
 │       └── vision/
 │           └── analyze/
-│               └── route.ts          # Vision API 라우트
+│               └── route.ts          # Vision API 라우트 (보안 강화)
 ├── lib/
 │   ├── actions/
 │   │   └── storage.ts                # Storage 업로드/삭제 액션
+│   ├── image/
+│   │   └── preprocess.ts             # HEIC 변환, 리사이즈, EXIF 보정
+│   ├── vision/
+│   │   └── validators.ts             # URL 검증, JSON 파싱 헬퍼
 │   └── types/
 │       └── vision.ts                 # Vision 관련 타입/스키마
+├── types/
+│   └── heic2any.d.ts                 # heic2any 타입 선언
 
 supabase/
 └── migrations/
@@ -216,6 +234,10 @@ curl -X POST http://localhost:3000/api/vision/analyze \
 2. **Signed URL**: Storage 파일은 제한된 시간(1시간) 동안만 접근 가능
 3. **RLS**: 사용자는 자신의 파일에만 접근 가능
 4. **파일 검증**: MIME type 및 파일 크기 검증
+5. **URL 화이트리스트**: `/api/vision/analyze`는 우리 Supabase Storage의 signed URL만 허용
+   - `https://{project}.supabase.co/storage/v1/object/sign/card-uploads/...` 형식만 허용
+   - 외부 URL 요청 시 400 에러 반환
+6. **인증 필수**: Vision API는 로그인된 사용자만 호출 가능 (401 Unauthorized)
 
 ---
 
@@ -236,6 +258,43 @@ curl -X POST http://localhost:3000/api/vision/analyze \
 1. API 키가 유효한지 확인
 2. 이미지가 선명한지 확인
 3. 실제 포켓몬 카드 이미지인지 확인
+
+---
+
+## 로컬 테스트 체크리스트
+
+### 빠른 테스트
+
+1. **파일 업로드 테스트**
+   ```
+   [ ] `/scan` 페이지 접속 (로그인 필요)
+   [ ] JPEG 이미지 선택 → 앞면/뒷면 순서대로 업로드
+   [ ] "Analyze Card" 버튼 클릭
+   [ ] 분석 결과 확인 + 카드 검색 테스트
+   ```
+
+2. **HEIC 변환 테스트** (iPhone 사용자)
+   ```
+   [ ] iPhone에서 촬영한 HEIC 이미지 업로드
+   [ ] "Converting..." 상태 표시 확인
+   [ ] 변환 완료 후 정상 업로드 확인
+   ```
+
+3. **모바일 카메라 테스트**
+   ```
+   [ ] 모바일 브라우저에서 `/scan` 접속
+   [ ] "Take Photo" 버튼 → 카메라 직접 실행 확인
+   [ ] 앞면 촬영 → 뒷면 촬영 → 분석
+   ```
+
+### 에러 핸들링 테스트
+
+```
+[ ] 10MB 초과 파일 업로드 → 에러 메시지 확인
+[ ] 지원하지 않는 형식 업로드 → 에러 메시지 확인
+[ ] 포켓몬 카드가 아닌 이미지 분석 → 적절한 에러 메시지 확인
+[ ] "Try Again" 버튼으로 재시도 가능 확인
+```
 
 ---
 
