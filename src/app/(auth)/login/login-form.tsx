@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,6 @@ import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -17,16 +17,23 @@ import {
 import { login, signInWithGoogle, type AuthState } from "@/lib/actions/auth";
 import { Loader2 } from "lucide-react";
 
-const GOOGLE_OAUTH_ENABLED = process.env.NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED === "true";
+const GOOGLE_OAUTH_ENABLED =
+  process.env.NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED === "true";
 
 export function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") || "/scan";
   const errorParam = searchParams.get("error");
+  const t = useTranslations("auth.login");
+  const tErrors = useTranslations("auth.errors");
+  const tCommon = useTranslations("common");
 
   const [state, formAction, isPending] = useActionState<AuthState, FormData>(
     login,
-    { error: errorParam === "auth_failed" ? "인증에 실패했습니다. 다시 시도해주세요" : undefined }
+    {
+      error:
+        errorParam === "auth_failed" ? tErrors("invalidCredentials") : undefined,
+    }
   );
 
   const handleGoogleLogin = async () => {
@@ -40,8 +47,7 @@ export function LoginForm() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl">myPCGdex</CardTitle>
-        <CardDescription>계정에 로그인하세요</CardDescription>
+        <CardTitle className="text-2xl">{tCommon("appName")}</CardTitle>
       </CardHeader>
       <CardContent>
         <form action={formAction} className="space-y-4">
@@ -54,7 +60,7 @@ export function LoginForm() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="email">이메일</Label>
+            <Label htmlFor="email">{t("email")}</Label>
             <Input
               id="email"
               name="email"
@@ -67,7 +73,7 @@ export function LoginForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">비밀번호</Label>
+            <Label htmlFor="password">{t("password")}</Label>
             <Input
               id="password"
               name="password"
@@ -83,10 +89,10 @@ export function LoginForm() {
             {isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                로그인 중...
+                {tCommon("loading")}
               </>
             ) : (
-              "로그인"
+              t("submit")
             )}
           </Button>
         </form>
@@ -99,7 +105,7 @@ export function LoginForm() {
               </div>
               <div className="relative flex justify-center text-xs uppercase">
                 <span className="bg-background px-2 text-muted-foreground">
-                  또는
+                  {t("orContinueWith")}
                 </span>
               </div>
             </div>
@@ -129,16 +135,16 @@ export function LoginForm() {
                   fill="#EA4335"
                 />
               </svg>
-              Google로 계속하기
+              {t("googleLogin")}
             </Button>
           </>
         )}
       </CardContent>
       <CardFooter className="flex justify-center">
         <p className="text-sm text-muted-foreground">
-          계정이 없으신가요?{" "}
+          {t("noAccount")}{" "}
           <Link href="/signup" className="text-primary hover:underline">
-            회원가입
+            {t("signupLink")}
           </Link>
         </p>
       </CardFooter>

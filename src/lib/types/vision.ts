@@ -1,11 +1,15 @@
 import { z } from "zod";
 
+// Supported languages: Korean, Japanese, English only
+export const SUPPORTED_LANGUAGES = ["ko", "ja", "en"] as const;
+export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
+
 // Vision API response schema
 export const VisionResponseSchema = z.object({
   pokemon_name: z.string().min(1, "Pokemon name is required"),
   card_number: z.string().min(1, "Card number is required"),
   set_id: z.string().optional(),
-  language: z.enum(["en", "ja", "ko", "zh", "other"]),
+  language: z.enum(SUPPORTED_LANGUAGES),
 });
 
 export type VisionResponse = z.infer<typeof VisionResponseSchema>;

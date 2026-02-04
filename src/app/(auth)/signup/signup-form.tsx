@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +9,6 @@ import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -21,12 +21,13 @@ export function SignupForm() {
     signup,
     {}
   );
+  const t = useTranslations("auth.signup");
+  const tCommon = useTranslations("common");
 
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl">myPCGdex</CardTitle>
-        <CardDescription>새 계정을 만들어 시작하세요</CardDescription>
+        <CardTitle className="text-2xl">{tCommon("appName")}</CardTitle>
       </CardHeader>
       <CardContent>
         <form action={formAction} className="space-y-4">
@@ -37,7 +38,7 @@ export function SignupForm() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="email">이메일</Label>
+            <Label htmlFor="email">{t("email")}</Label>
             <Input
               id="email"
               name="email"
@@ -50,7 +51,7 @@ export function SignupForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">비밀번호</Label>
+            <Label htmlFor="password">{t("password")}</Label>
             <Input
               id="password"
               name="password"
@@ -61,13 +62,10 @@ export function SignupForm() {
               minLength={6}
               disabled={isPending}
             />
-            <p className="text-xs text-muted-foreground">
-              최소 6자 이상이어야 합니다
-            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword">비밀번호 확인</Label>
+            <Label htmlFor="confirmPassword">{t("confirmPassword")}</Label>
             <Input
               id="confirmPassword"
               name="confirmPassword"
@@ -84,19 +82,19 @@ export function SignupForm() {
             {isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                가입 중...
+                {tCommon("loading")}
               </>
             ) : (
-              "회원가입"
+              t("submit")
             )}
           </Button>
         </form>
       </CardContent>
       <CardFooter className="flex justify-center">
         <p className="text-sm text-muted-foreground">
-          이미 계정이 있으신가요?{" "}
+          {t("hasAccount")}{" "}
           <Link href="/login" className="text-primary hover:underline">
-            로그인
+            {t("loginLink")}
           </Link>
         </p>
       </CardFooter>

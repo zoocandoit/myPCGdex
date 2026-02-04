@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -19,7 +20,7 @@ import {
 import { uploadCardImage } from "@/lib/actions/storage";
 import { VisionResponse, ScanResult } from "@/lib/types/vision";
 import { ResultForm } from "./result-form";
-import { TCGCard } from "@/lib/tcg/types";
+import { ScoredCard } from "@/lib/tcg/hooks";
 import {
   preprocessImage,
   validateImageFile,
@@ -59,24 +60,26 @@ export function DualImageScanner() {
   });
   const [result, setResult] = useState<ScanResult | null>(null);
   // TODO: Phase 5 - use selectedCard and uploadedPaths for saving to collection
-  const [_selectedCard, setSelectedCard] = useState<TCGCard | null>(null);
+  const [_selectedCard, setSelectedCard] = useState<ScoredCard | null>(null);
   const [_uploadedPaths, setUploadedPaths] = useState<{
     front?: string;
     back?: string;
   }>({});
   const [isMobile, setIsMobile] = useState(() => {
-    // Initial value from SSR-safe check
     if (typeof window === "undefined") return false;
     return "ontouchstart" in window || navigator.maxTouchPoints > 0;
   });
   const [processingError, setProcessingError] =
     useState<ProcessingError | null>(null);
-  const [convertingTarget, setConvertingTarget] = useState<
+  // Track which image is being converted (for future UX improvements)
+  const [_convertingTarget, setConvertingTarget] = useState<
     "front" | "back" | null
   >(null);
   const pendingFileRef = useRef<File | null>(null);
 
-  // Re-check on mount in case SSR value was wrong
+  const t = useTranslations("scan");
+  const tCommon = useTranslations("common");
+
   useEffect(() => {
     const isTouchDevice =
       "ontouchstart" in window || navigator.maxTouchPoints > 0;
@@ -88,7 +91,6 @@ export function DualImageScanner() {
 
   const processFile = useCallback(
     async (file: File, target: "front" | "back") => {
-      // Validate file first
       const validation = validateImageFile(file);
       if (!validation.valid) {
         setProcessingError({
@@ -99,10 +101,9 @@ export function DualImageScanner() {
         return;
       }
 
-      // Check if we need to convert (HEIC or large file)
       const needsConversion =
         isHeicFile(file) ||
-        file.size > 2 * 1024 * 1024 || // > 2MB
+        file.size > 2 * 1024 * 1024 ||
         !["image/jpeg", "image/png", "image/webp"].includes(file.type);
 
       if (needsConversion) {
@@ -111,7 +112,6 @@ export function DualImageScanner() {
       }
 
       try {
-        // Preprocess the image (convert HEIC, resize, fix orientation)
         const processed = await preprocessImage(file, {
           maxDimension: 1400,
           quality: 0.85,
@@ -158,13 +158,12 @@ export function DualImageScanner() {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      // Reset input for next selection
       if (inputRef.current) {
         inputRef.current.value = "";
       }
 
-      // Determine target based on current step
-      const target = step === "front" || step === "converting" ? "front" : "back";
+      const target =
+        step === "front" || step === "converting" ? "front" : "back";
       pendingFileRef.current = file;
 
       await processFile(file, target);
@@ -176,7 +175,10 @@ export function DualImageScanner() {
     if (!pendingFileRef.current || !processingError) return;
 
     setProcessingError(null);
-    await processFile(pendingFileRef.current, processingError.step as "front" | "back");
+    await processFile(
+      pendingFileRef.current,
+      processingError.step as "front" | "back"
+    );
   }, [processingError, processFile]);
 
   const resetAll = useCallback(() => {
@@ -213,7 +215,6 @@ export function DualImageScanner() {
     setProcessingError(null);
 
     try {
-      // Upload front image
       const frontResult = await uploadCardImage(
         images.front,
         images.frontMimeType
@@ -228,7 +229,6 @@ export function DualImageScanner() {
         return;
       }
 
-      // Upload back image
       const backResult = await uploadCardImage(
         images.back,
         images.backMimeType
@@ -250,7 +250,6 @@ export function DualImageScanner() {
 
       setStep("analyzing");
 
-      // Analyze front image with Vision API
       const response = await fetch("/api/vision/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -261,17 +260,9 @@ export function DualImageScanner() {
         const errorData = await response.json();
         const errorMessage = errorData.error || "Analysis failed";
 
-        // Provide actionable error messages
-        let actionableMessage = errorMessage;
-        if (errorMessage.includes("card number")) {
-          actionableMessage = "Could not read card number. Try taking a clearer photo with better lighting.";
-        } else if (errorMessage.includes("not a Pokemon card")) {
-          actionableMessage = "This doesn't appear to be a Pokemon card. Please scan a valid card.";
-        }
-
         setResult({
           success: false,
-          error: actionableMessage,
+          error: errorMessage,
           imageUrl: frontResult.signedUrl,
         });
         setStep("done");
@@ -304,47 +295,44 @@ export function DualImageScanner() {
     setProcessingError(null);
   }, []);
 
-  const handleCardSelect = useCallback((card: TCGCard) => {
+  const handleCardSelect = useCallback((card: ScoredCard) => {
     setSelectedCard(card);
-    // TODO: Phase 5 - Save to collection with front/back paths
-    console.log("[Card Selected]", card.id, card.name);
+    console.log("[Card Selected]", card.id, card.name, "Score:", card.accuracyScore);
   }, []);
 
   const getStepTitle = () => {
     switch (step) {
       case "front":
-        return "Step 1: Upload Front of Card";
+        return t("step1");
       case "back":
-        return "Step 2: Upload Back of Card";
+        return t("step2");
       case "converting":
-        return "Processing Image...";
+        return t("converting");
       case "review":
-        return "Review Images";
+        return t("step3");
       case "uploading":
-        return "Uploading Images...";
+        return t("uploading");
       case "analyzing":
-        return "Analyzing Card...";
+        return t("analyzing");
       case "done":
-        return result?.success ? "Analysis Complete" : "Analysis Failed";
+        return result?.success ? t("analysisComplete") : t("analysisFailed");
     }
   };
 
   const getStepDescription = () => {
     switch (step) {
       case "front":
-        return "Upload a clear photo of the front of your Pokemon card";
+        return "";
       case "back":
-        return "Now upload a photo of the back of the same card";
+        return "";
       case "converting":
-        return convertingTarget === "front"
-          ? "Converting front image..."
-          : "Converting back image...";
+        return t("optimizing");
       case "review":
-        return "Check both images before analyzing";
+        return "";
       case "uploading":
-        return "Securely uploading your images...";
+        return t("securelyStoring");
       case "analyzing":
-        return "AI is reading the card details...";
+        return t("aiReading");
       default:
         return "";
     }
@@ -352,7 +340,6 @@ export function DualImageScanner() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Hidden file input - uses camera on mobile */}
       <input
         ref={inputRef}
         type="file"
@@ -437,7 +424,7 @@ export function DualImageScanner() {
                     onClick={retryProcessing}
                   >
                     <RefreshCw className="mr-1 h-3 w-3" />
-                    Try again
+                    {tCommon("retry")}
                   </Button>
                 )}
               </div>
@@ -453,11 +440,9 @@ export function DualImageScanner() {
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
             <div className="text-center">
               <p className="font-medium text-muted-foreground">
-                Converting image...
+                {t("converting")}
               </p>
-              <p className="text-xs text-muted-foreground">
-                Optimizing for best results
-              </p>
+              <p className="text-xs text-muted-foreground">{t("optimizing")}</p>
             </div>
           </CardContent>
         </Card>
@@ -476,16 +461,14 @@ export function DualImageScanner() {
                 <p className="font-medium">
                   {isMobile
                     ? step === "front"
-                      ? "Take Photo of Front"
-                      : "Take Photo of Back"
+                      ? t("takeFrontPhoto")
+                      : t("takeBackPhoto")
                     : step === "front"
-                      ? "Upload Front Image"
-                      : "Upload Back Image"}
+                      ? t("uploadFront")
+                      : t("uploadBack")}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  {isMobile
-                    ? "Tap to open camera"
-                    : "JPEG, PNG, WebP, or HEIC (max 10MB)"}
+                  {isMobile ? t("tapToOpenCamera") : t("supportedFormats")}
                 </p>
               </div>
             </button>
@@ -496,12 +479,11 @@ export function DualImageScanner() {
       {/* Review both images */}
       {step === "review" && (
         <div className="grid grid-cols-2 gap-3">
-          {/* Front */}
           <Card className="overflow-hidden">
             <CardContent className="p-0">
               <div className="relative">
                 <div className="absolute left-2 top-2 rounded bg-black/60 px-2 py-1 text-xs text-white">
-                  Front
+                  {t("front")}
                 </div>
                 <button
                   onClick={retakeFront}
@@ -519,12 +501,11 @@ export function DualImageScanner() {
             </CardContent>
           </Card>
 
-          {/* Back */}
           <Card className="overflow-hidden">
             <CardContent className="p-0">
               <div className="relative">
                 <div className="absolute left-2 top-2 rounded bg-black/60 px-2 py-1 text-xs text-white">
-                  Back
+                  {t("back")}
                 </div>
                 <button
                   onClick={retakeBack}
@@ -551,12 +532,10 @@ export function DualImageScanner() {
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
             <div className="text-center">
               <p className="font-medium text-muted-foreground">
-                {step === "uploading" ? "Uploading images..." : "Analyzing card..."}
+                {step === "uploading" ? t("uploading") : t("analyzing")}
               </p>
               <p className="text-xs text-muted-foreground">
-                {step === "uploading"
-                  ? "Securely storing your photos"
-                  : "AI is reading card details"}
+                {step === "uploading" ? t("securelyStoring") : t("aiReading")}
               </p>
             </div>
           </CardContent>
@@ -572,7 +551,7 @@ export function DualImageScanner() {
             ) : (
               <Upload className="mr-2 h-5 w-5" />
             )}
-            {isMobile ? "Take Front Photo" : "Select Front Image"}
+            {isMobile ? t("takeFrontPhoto") : t("uploadFront")}
           </Button>
         )}
 
@@ -580,7 +559,7 @@ export function DualImageScanner() {
           <>
             <Button onClick={retakeFront} variant="outline" className="flex-1">
               <RotateCcw className="mr-2 h-5 w-5" />
-              Retake Front
+              {t("retakeFront")}
             </Button>
             <Button
               onClick={() => inputRef.current?.click()}
@@ -591,7 +570,7 @@ export function DualImageScanner() {
               ) : (
                 <Upload className="mr-2 h-5 w-5" />
               )}
-              {isMobile ? "Take Back Photo" : "Select Back Image"}
+              {isMobile ? t("takeBackPhoto") : t("uploadBack")}
             </Button>
           </>
         )}
@@ -600,11 +579,11 @@ export function DualImageScanner() {
           <>
             <Button onClick={resetAll} variant="outline" className="flex-1">
               <X className="mr-2 h-5 w-5" />
-              Start Over
+              {t("startOver")}
             </Button>
             <Button onClick={analyzeCard} className="flex-1">
               <ArrowRight className="mr-2 h-5 w-5" />
-              Analyze Card
+              {t("analyze")}
             </Button>
           </>
         )}
@@ -612,7 +591,7 @@ export function DualImageScanner() {
         {step === "done" && (
           <Button onClick={resetAll} variant="outline" className="flex-1">
             <Upload className="mr-2 h-5 w-5" />
-            Scan Another Card
+            {t("scanAnother")}
           </Button>
         )}
       </div>
@@ -631,7 +610,7 @@ export function DualImageScanner() {
                 <div className="flex flex-col gap-3">
                   <div className="flex items-start gap-2 text-red-600">
                     <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
-                    <span>{result.error || "Analysis failed"}</span>
+                    <span>{result.error || t("analysisFailed")}</span>
                   </div>
                   <Button
                     variant="outline"
@@ -640,7 +619,7 @@ export function DualImageScanner() {
                     className="self-start"
                   >
                     <RefreshCw className="mr-2 h-4 w-4" />
-                    Try Again with Same Images
+                    {t("tryAgainSameImages")}
                   </Button>
                 </div>
               </CardContent>

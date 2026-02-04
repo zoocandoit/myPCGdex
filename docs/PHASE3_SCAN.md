@@ -182,14 +182,14 @@ IMPORTANT RULES:
 1. Return ONLY valid JSON, no other text
 2. For card_number, look at the BOTTOM of the card for numbers like "025/165"
 3. For set_id, look for set symbols or codes (e.g., "SV2a")
-4. Detect the language from the card text
+4. Detect the language (supported: ko=Korean, ja=Japanese, en=English)
 
 Required JSON format:
 {
   "pokemon_name": "string",
   "card_number": "string (e.g., '025/165')",
   "set_id": "string or null",
-  "language": "en" | "ja" | "ko" | "zh" | "other"
+  "language": "ko" | "ja" | "en"
 }
 ```
 
