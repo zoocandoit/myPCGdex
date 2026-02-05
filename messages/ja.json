@@ -68,7 +68,7 @@
     "retake": "撮り直す",
     "retakeFront": "表面を撮り直す",
     "startOver": "最初から",
-    "analyze": "カードを分析",
+    "analyze": "AI分析",
     "converting": "画像を変換中...",
     "optimizing": "最適化中...",
     "uploading": "アップロード中...",
@@ -78,7 +78,37 @@
     "analysisComplete": "分析完了",
     "analysisFailed": "分析失敗",
     "scanAnother": "別のカードをスキャン",
-    "tryAgainSameImages": "同じ画像で再試行"
+    "tryAgainSameImages": "同じ画像で再試行",
+    "manualEntry": "手動入力",
+    "backToReview": "確認に戻る",
+    "visionUsage": "AI分析 残り{remaining}/{total}回",
+    "dailyLimitReached": "本日のAI分析回数を使い切りました",
+    "dailyLimitDescription": "明日また5回使用できます。今はカード情報を手動で入力してください。",
+    "queuedTitle": "キューに追加されました",
+    "queuedDescription": "本日のAI分析回数を使い切りました。このカードはキューに保存され、明日分析できます。",
+    "viewPending": "キューを見る"
+  },
+  "manualEntry": {
+    "title": "カード手動登録",
+    "description": "カード情報を手動で入力してコレクションに追加します。",
+    "pokemonName": "ポケモン名",
+    "pokemonNamePlaceholder": "例：ピカチュウ",
+    "cardNumber": "カード番号",
+    "setId": "セットID",
+    "language": "言語",
+    "rarity": "レアリティ",
+    "rarityPlaceholder": "例：RR、SR、SAR",
+    "collectionInfo": "コレクション情報",
+    "purchasePrice": "購入価格",
+    "quantity": "数量",
+    "condition": "状態",
+    "notes": "メモ",
+    "notesPlaceholder": "このカードについてのメモを入力...",
+    "saveToCollection": "コレクションに保存",
+    "errors": {
+      "unauthorized": "ログインが必要です",
+      "saveFailed": "保存に失敗しました"
+    }
   },
   "result": {
     "title": "AI分析結果",
@@ -115,7 +145,17 @@
     "empty": "コレクションは空です",
     "startScanning": "カードをスキャンしてコレクションを始めましょう",
     "totalCards": "合計{count}枚",
-    "totalValue": "総額"
+    "totalValue": "総額",
+    "analyzed": "分析済み",
+    "pending": "待機中",
+    "noPendingCards": "待機中のカードはありません",
+    "remainingAnalyses": "本日残り{count}回分析可能",
+    "analyzeNow": "今すぐ分析",
+    "status": {
+      "pending": "待機中",
+      "processing": "分析中",
+      "failed": "失敗"
+    }
   },
   "profile": {
     "title": "プロフィール",
@@ -126,7 +166,13 @@
     "theme": "テーマ",
     "darkMode": "ダークモード",
     "lightMode": "ライトモード",
-    "system": "システム設定"
+    "system": "システム設定",
+    "loading": "読み込み中...",
+    "visionUsage": {
+      "title": "AI分析使用量",
+      "remaining": "残り{remaining}/5回",
+      "resetsAt": "深夜0時にリセットされます"
+    }
   },
   "errors": {
     "unauthorized": "ログインが必要です",
@@ -135,6 +181,9 @@
     "imageTooLarge": "画像が大きすぎます（最大10MB）",
     "unsupportedFormat": "サポートされていない形式です。JPG、PNG、WebP、HEICをご使用ください",
     "couldNotReadCard": "カード情報を読み取れませんでした。明るい場所で再試行してください",
-    "notPokemonCard": "ポケモンカードではないようです"
+    "notPokemonCard": "ポケモンカードではないようです",
+    "serverError": "サーバーエラーが発生しました。しばらく待ってから再試行してください。",
+    "quotaExceeded": "サービスが混み合っています。しばらく待ってから再試行してください。",
+    "rateLimited": "リクエストが多すぎます。しばらく待ってから再試行してください。"
   }
 }

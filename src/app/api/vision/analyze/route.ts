@@ -29,7 +29,6 @@ Required JSON format:
 Analyze the card and return ONLY the JSON object, nothing else.`;
 
 interface AnalysisLog {
-  provider: "openai" | "anthropic";
   attempt: number;
   success: boolean;
   latencyMs: number;
@@ -39,16 +38,14 @@ interface AnalysisLog {
 function logAnalysis(log: AnalysisLog): void {
   const level = log.success ? "info" : "warn";
   console[level](
-    `[Vision API] provider=${log.provider} attempt=${log.attempt} success=${log.success} latency=${log.latencyMs}ms${log.error ? ` error="${log.error}"` : ""}`
+    `[Vision API] attempt=${log.attempt} success=${log.success} latency=${log.latencyMs}ms${log.error ? ` error="${log.error}"` : ""}`
   );
 }
 
-async function analyzeWithOpenAI(imageUrl: string): Promise<unknown> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
-
+async function analyzeWithOpenAI(
+  imageUrl: string,
+  apiKey: string
+): Promise<unknown> {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -72,9 +69,20 @@ async function analyzeWithOpenAI(imageUrl: string): Promise<unknown> {
   });
 
   if (!response.ok) {
-    // Log error for debugging but don't expose to client
     const errorBody = await response.text();
     console.error("[OpenAI Error Body]", errorBody);
+
+    // Check for common error types
+    if (response.status === 401) {
+      throw new Error("Invalid API key");
+    }
+    if (response.status === 429) {
+      throw new Error("Rate limit exceeded");
+    }
+    if (response.status === 402) {
+      throw new Error("Insufficient quota");
+    }
+
     throw new Error(`OpenAI API error: ${response.status}`);
   }
 
@@ -85,70 +93,6 @@ async function analyzeWithOpenAI(imageUrl: string): Promise<unknown> {
     throw new Error("No response from OpenAI");
   }
 
-  // Parse JSON from response (handles code fences and edge cases)
-  return safeParseVisionJson(content);
-}
-
-async function analyzeWithAnthropic(imageUrl: string): Promise<unknown> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error("ANTHROPIC_API_KEY is not configured");
-  }
-
-  // Fetch image and convert to base64
-  const imageResponse = await fetch(imageUrl);
-  if (!imageResponse.ok) {
-    throw new Error("Failed to fetch image");
-  }
-
-  const imageBuffer = await imageResponse.arrayBuffer();
-  const base64Image = Buffer.from(imageBuffer).toString("base64");
-  const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 500,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: contentType,
-                data: base64Image,
-              },
-            },
-            { type: "text", text: VISION_PROMPT },
-          ],
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    // Log error for debugging but don't expose to client
-    const errorBody = await response.text();
-    console.error("[Anthropic Error Body]", errorBody);
-    throw new Error(`Anthropic API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const content = data.content?.[0]?.text;
-
-  if (!content) {
-    throw new Error("No response from Anthropic");
-  }
-
-  // Parse JSON from response
   return safeParseVisionJson(content);
 }
 
@@ -192,19 +136,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Determine which provider to use
-    const useOpenAI = Boolean(process.env.OPENAI_API_KEY);
-    const useAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
+    // Use server API key only
+    const apiKey = process.env.OPENAI_API_KEY;
 
-    if (!useOpenAI && !useAnthropic) {
+    if (!apiKey) {
+      console.error("[Vision API] Server OPENAI_API_KEY not configured");
       return NextResponse.json(
-        { error: "No Vision API key configured" },
+        { error: "server_configuration_error" },
         { status: 500 }
       );
     }
-
-    const provider = useOpenAI ? "openai" : "anthropic";
-    const analyzeFn = useOpenAI ? analyzeWithOpenAI : analyzeWithAnthropic;
 
     // Retry logic
     let rawResult: unknown;
@@ -215,14 +156,13 @@ export async function POST(request: NextRequest) {
       const attemptStart = Date.now();
 
       try {
-        rawResult = await analyzeFn(imageUrl);
+        rawResult = await analyzeWithOpenAI(imageUrl, apiKey);
 
         // Validate response with Zod
         const result = VisionResponseSchema.safeParse(rawResult);
 
         if (result.success) {
           logAnalysis({
-            provider,
             attempt,
             success: true,
             latencyMs: Date.now() - attemptStart,
@@ -236,32 +176,44 @@ export async function POST(request: NextRequest) {
 
         lastError = "Response validation failed";
         logAnalysis({
-          provider,
           attempt,
           success: false,
           latencyMs: Date.now() - attemptStart,
           error: lastError,
         });
       } catch (error) {
-        lastError =
-          error instanceof Error ? error.message : "Unknown error";
+        lastError = error instanceof Error ? error.message : "Unknown error";
         logAnalysis({
-          provider,
           attempt,
           success: false,
           latencyMs: Date.now() - attemptStart,
           error: lastError,
         });
+
+        // Don't retry on authentication errors
+        if (
+          lastError === "Invalid API key" ||
+          lastError === "Insufficient quota"
+        ) {
+          break;
+        }
       }
+    }
+
+    // Map specific errors to client-friendly codes
+    let errorCode = "analysis_failed";
+    if (lastError === "Invalid API key") {
+      errorCode = "invalid_api_key";
+    } else if (lastError === "Insufficient quota") {
+      errorCode = "quota_exceeded";
+    } else if (lastError === "Rate limit exceeded") {
+      errorCode = "rate_limited";
     }
 
     console.error(
       `[Vision API] Failed after ${maxRetries + 1} attempts: ${lastError}`
     );
-    return NextResponse.json(
-      { error: "Failed to analyze card after multiple attempts" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: errorCode }, { status: 500 });
   } catch (error) {
     const latencyMs = Date.now() - startTime;
     console.error(`[Vision API] Error: latency=${latencyMs}ms`, error);

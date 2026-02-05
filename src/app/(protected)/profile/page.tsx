@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getTranslations, getLocale } from "next-intl/server";
 import { LogoutButton } from "./logout-button";
 import { LanguageSelector } from "./language-selector";
+import { VisionUsageDisplay } from "./vision-usage-display";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -60,6 +61,15 @@ export default async function ProfilePage() {
             </div>
             <LanguageSelector />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle>{t("visionUsage.title")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <VisionUsageDisplay />
         </CardContent>
       </Card>
 

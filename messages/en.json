@@ -68,7 +68,7 @@
     "retake": "Retake",
     "retakeFront": "Retake Front",
     "startOver": "Start Over",
-    "analyze": "Analyze Card",
+    "analyze": "AI Analyze",
     "converting": "Converting image...",
     "optimizing": "Optimizing...",
     "uploading": "Uploading...",
@@ -78,7 +78,37 @@
     "analysisComplete": "Analysis Complete",
     "analysisFailed": "Analysis Failed",
     "scanAnother": "Scan Another Card",
-    "tryAgainSameImages": "Try Again with Same Images"
+    "tryAgainSameImages": "Try Again with Same Images",
+    "manualEntry": "Manual Entry",
+    "backToReview": "Back to Review",
+    "visionUsage": "AI scans: {remaining}/{total} left",
+    "dailyLimitReached": "Daily AI scan limit reached",
+    "dailyLimitDescription": "You can use 5 more scans tomorrow. Please enter card info manually for now.",
+    "queuedTitle": "Added to Queue",
+    "queuedDescription": "You've used all AI scans for today. This card has been saved to the queue and can be analyzed tomorrow.",
+    "viewPending": "View Queue"
+  },
+  "manualEntry": {
+    "title": "Manual Card Entry",
+    "description": "Enter card details manually to add to your collection.",
+    "pokemonName": "Pokemon Name",
+    "pokemonNamePlaceholder": "e.g., Pikachu",
+    "cardNumber": "Card Number",
+    "setId": "Set ID",
+    "language": "Language",
+    "rarity": "Rarity",
+    "rarityPlaceholder": "e.g., RR, SR, SAR",
+    "collectionInfo": "Collection Info",
+    "purchasePrice": "Purchase Price",
+    "quantity": "Quantity",
+    "condition": "Condition",
+    "notes": "Notes",
+    "notesPlaceholder": "Enter notes about this card...",
+    "saveToCollection": "Save to Collection",
+    "errors": {
+      "unauthorized": "Please login to continue",
+      "saveFailed": "Failed to save"
+    }
   },
   "result": {
     "title": "AI Detection Result",
@@ -115,7 +145,17 @@
     "empty": "Your collection is empty",
     "startScanning": "Start scanning cards to build your collection",
     "totalCards": "{count} cards",
-    "totalValue": "Total Value"
+    "totalValue": "Total Value",
+    "analyzed": "Analyzed",
+    "pending": "Pending",
+    "noPendingCards": "No pending cards",
+    "remainingAnalyses": "{count} analyses left today",
+    "analyzeNow": "Analyze Now",
+    "status": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "failed": "Failed"
+    }
   },
   "profile": {
     "title": "Profile",
@@ -126,7 +166,13 @@
     "theme": "Theme",
     "darkMode": "Dark Mode",
     "lightMode": "Light Mode",
-    "system": "System"
+    "system": "System",
+    "loading": "Loading...",
+    "visionUsage": {
+      "title": "AI Scan Usage",
+      "remaining": "{remaining}/5 remaining",
+      "resetsAt": "Resets at midnight"
+    }
   },
   "errors": {
     "unauthorized": "Please login to continue",
@@ -135,6 +181,9 @@
     "imageTooLarge": "Image is too large (max 10MB)",
     "unsupportedFormat": "Unsupported format. Please use JPG, PNG, WebP, or HEIC",
     "couldNotReadCard": "Could not read card. Try again with better lighting",
-    "notPokemonCard": "This doesn't appear to be a Pokemon card"
+    "notPokemonCard": "This doesn't appear to be a Pokemon card",
+    "serverError": "Server error occurred. Please try again later.",
+    "quotaExceeded": "Service is currently busy. Please try again later.",
+    "rateLimited": "Too many requests. Please try again later."
   }
 }

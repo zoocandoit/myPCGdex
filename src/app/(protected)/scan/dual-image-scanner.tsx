@@ -16,16 +16,27 @@ import {
   Check,
   RefreshCw,
   AlertCircle,
+  Pencil,
+  Sparkles,
+  Clock,
 } from "lucide-react";
 import { uploadCardImage } from "@/lib/actions/storage";
 import { VisionResponse, ScanResult } from "@/lib/types/vision";
 import { ResultForm } from "./result-form";
+import { ManualEntryForm } from "./manual-entry-form";
 import { ScoredCard } from "@/lib/tcg/hooks";
 import {
   preprocessImage,
   validateImageFile,
   isHeicFile,
 } from "@/lib/image/preprocess";
+import {
+  getVisionUsage,
+  checkAndIncrementVisionUsage,
+  type VisionUsageResult,
+} from "@/lib/actions/vision-usage";
+import { addToPendingQueue } from "@/lib/actions/pending";
+import { useRouter } from "next/navigation";
 
 type Step =
   | "front"
@@ -34,7 +45,9 @@ type Step =
   | "review"
   | "uploading"
   | "analyzing"
-  | "done";
+  | "done"
+  | "manual"
+  | "queue"; // Queued for later analysis
 
 interface CardImages {
   front: string | null;
@@ -50,6 +63,7 @@ interface ProcessingError {
 }
 
 export function DualImageScanner() {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<Step>("front");
   const [images, setImages] = useState<CardImages>({
@@ -77,8 +91,22 @@ export function DualImageScanner() {
   >(null);
   const pendingFileRef = useRef<File | null>(null);
 
+  // Vision usage tracking
+  const [visionUsage, setVisionUsage] = useState<VisionUsageResult | null>(null);
+  const [isCheckingUsage, setIsCheckingUsage] = useState(true);
+
   const t = useTranslations("scan");
   const tCommon = useTranslations("common");
+
+  // Check vision usage on mount
+  useEffect(() => {
+    async function checkUsage() {
+      const usage = await getVisionUsage();
+      setVisionUsage(usage);
+      setIsCheckingUsage(false);
+    }
+    checkUsage();
+  }, []);
 
   useEffect(() => {
     const isTouchDevice =
@@ -211,6 +239,83 @@ export function DualImageScanner() {
   const analyzeCard = useCallback(async () => {
     if (!images.front || !images.back) return;
 
+    // First check current usage without incrementing
+    const currentUsage = await getVisionUsage();
+    setVisionUsage(currentUsage);
+
+    // If limit reached, upload images and add to queue
+    if (!currentUsage.canUseVision) {
+      setStep("uploading");
+      setProcessingError(null);
+
+      try {
+        // Upload front image
+        const frontResult = await uploadCardImage(
+          images.front,
+          images.frontMimeType
+        );
+        if (!frontResult.success || !frontResult.path) {
+          setProcessingError({
+            message: frontResult.error || "Failed to upload front image",
+            canRetry: true,
+            step: "upload",
+          });
+          setStep("review");
+          return;
+        }
+
+        // Upload back image
+        const backResult = await uploadCardImage(
+          images.back,
+          images.backMimeType
+        );
+
+        // Add to pending queue
+        const queueResult = await addToPendingQueue({
+          front_image_path: frontResult.path,
+          back_image_path: backResult.success ? backResult.path : null,
+        });
+
+        if (queueResult.success) {
+          setUploadedPaths({
+            front: frontResult.path,
+            back: backResult.path,
+          });
+          setStep("queue");
+        } else {
+          setProcessingError({
+            message: "Failed to add to queue",
+            canRetry: true,
+            step: "upload",
+          });
+          setStep("review");
+        }
+      } catch (error) {
+        console.error("[Queue Error]", error);
+        setProcessingError({
+          message: error instanceof Error ? error.message : "Failed to queue card",
+          canRetry: true,
+          step: "upload",
+        });
+        setStep("review");
+      }
+      return;
+    }
+
+    // Has remaining uses - proceed with analysis
+    const usageResult = await checkAndIncrementVisionUsage();
+    setVisionUsage(usageResult);
+
+    if (!usageResult.canUseVision) {
+      // Race condition: usage was taken by another request
+      setResult({
+        success: false,
+        error: "daily_limit_reached",
+      });
+      setStep("done");
+      return;
+    }
+
     setStep("uploading");
     setProcessingError(null);
 
@@ -289,6 +394,16 @@ export function DualImageScanner() {
     }
   }, [images]);
 
+  // Switch to manual entry mode
+  const switchToManualEntry = useCallback(() => {
+    setStep("manual");
+  }, []);
+
+  // Handle manual entry completion
+  const handleManualEntrySuccess = useCallback(() => {
+    resetAll();
+  }, [resetAll]);
+
   const retryAnalysis = useCallback(() => {
     setResult(null);
     setStep("review");
@@ -314,6 +429,10 @@ export function DualImageScanner() {
         return t("uploading");
       case "analyzing":
         return t("analyzing");
+      case "manual":
+        return t("manualEntry");
+      case "queue":
+        return t("queuedTitle");
       case "done":
         return result?.success ? t("analysisComplete") : t("analysisFailed");
     }
@@ -405,6 +524,19 @@ export function DualImageScanner() {
           <p className="text-sm text-muted-foreground">{getStepDescription()}</p>
         )}
       </div>
+
+      {/* Vision Usage Indicator */}
+      {!isCheckingUsage && visionUsage && step !== "manual" && step !== "done" && step !== "queue" && (
+        <div className="flex items-center justify-center gap-2 text-sm">
+          <Sparkles className="h-4 w-4 text-amber-500" />
+          <span className="text-muted-foreground">
+            {t("visionUsage", {
+              remaining: visionUsage.remainingToday,
+              total: 5,
+            })}
+          </span>
+        </div>
+      )}
 
       {/* Processing Error Banner */}
       {processingError && step !== "done" && (
@@ -577,13 +709,45 @@ export function DualImageScanner() {
 
         {step === "review" && (
           <>
-            <Button onClick={resetAll} variant="outline" className="flex-1">
-              <X className="mr-2 h-5 w-5" />
+            <Button onClick={resetAll} variant="outline" size="sm">
+              <X className="mr-1 h-4 w-4" />
               {t("startOver")}
             </Button>
-            <Button onClick={analyzeCard} className="flex-1">
-              <ArrowRight className="mr-2 h-5 w-5" />
+            <Button onClick={switchToManualEntry} variant="outline" className="flex-1">
+              <Pencil className="mr-2 h-4 w-4" />
+              {t("manualEntry")}
+            </Button>
+            <Button
+              onClick={analyzeCard}
+              className="flex-1"
+              disabled={!visionUsage?.canUseVision}
+            >
+              <Sparkles className="mr-2 h-4 w-4" />
               {t("analyze")}
+              {visionUsage && (
+                <span className="ml-1 text-xs opacity-70">
+                  ({visionUsage.remainingToday})
+                </span>
+              )}
+            </Button>
+          </>
+        )}
+
+        {step === "manual" && (
+          <Button onClick={() => setStep("review")} variant="outline" className="flex-1">
+            <ArrowRight className="mr-2 h-5 w-5" />
+            {t("backToReview")}
+          </Button>
+        )}
+
+        {step === "queue" && (
+          <>
+            <Button onClick={resetAll} variant="outline" className="flex-1">
+              <Upload className="mr-2 h-5 w-5" />
+              {t("scanAnother")}
+            </Button>
+            <Button onClick={() => router.push("/collection?tab=pending")} className="flex-1">
+              {t("viewPending")}
             </Button>
           </>
         )}
@@ -596,6 +760,35 @@ export function DualImageScanner() {
         )}
       </div>
 
+      {/* Queue Success */}
+      {step === "queue" && (
+        <Card className="border-blue-500 bg-blue-50 dark:bg-blue-950/20">
+          <CardContent className="p-4">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-start gap-2 text-blue-700 dark:text-blue-300">
+                <Clock className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                <div>
+                  <p className="font-medium">{t("queuedTitle")}</p>
+                  <p className="text-sm text-blue-600 dark:text-blue-400">
+                    {t("queuedDescription")}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Manual Entry Form */}
+      {step === "manual" && (
+        <ManualEntryForm
+          frontImagePath={_uploadedPaths.front}
+          backImagePath={_uploadedPaths.back}
+          onBack={() => setStep("review")}
+          onSuccess={handleManualEntrySuccess}
+        />
+      )}
+
       {/* Result */}
       {result && step === "done" && (
         <>
@@ -604,6 +797,30 @@ export function DualImageScanner() {
               visionResult={result.data}
               onCardSelect={handleCardSelect}
             />
+          ) : result.error === "daily_limit_reached" ? (
+            // Daily limit reached - suggest manual entry
+            <Card className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+              <CardContent className="p-4">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-start gap-2 text-amber-700 dark:text-amber-300">
+                    <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium">{t("dailyLimitReached")}</p>
+                      <p className="text-sm text-amber-600 dark:text-amber-400">
+                        {t("dailyLimitDescription")}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={switchToManualEntry}
+                    className="self-start"
+                  >
+                    <Pencil className="mr-2 h-4 w-4" />
+                    {t("manualEntry")}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           ) : (
             <Card className="border-red-500">
               <CardContent className="p-4">
@@ -612,15 +829,24 @@ export function DualImageScanner() {
                     <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
                     <span>{result.error || t("analysisFailed")}</span>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={retryAnalysis}
-                    className="self-start"
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    {t("tryAgainSameImages")}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={retryAnalysis}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      {t("tryAgainSameImages")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={switchToManualEntry}
+                    >
+                      <Pencil className="mr-2 h-4 w-4" />
+                      {t("manualEntry")}
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>

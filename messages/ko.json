@@ -68,7 +68,7 @@
     "retake": "다시 촬영",
     "retakeFront": "앞면 다시 촬영",
     "startOver": "처음부터",
-    "analyze": "카드 분석",
+    "analyze": "AI 분석",
     "converting": "이미지 변환 중...",
     "optimizing": "최적화 중...",
     "uploading": "업로드 중...",
@@ -78,7 +78,37 @@
     "analysisComplete": "분석 완료",
     "analysisFailed": "분석 실패",
     "scanAnother": "다른 카드 스캔",
-    "tryAgainSameImages": "같은 이미지로 다시 시도"
+    "tryAgainSameImages": "같은 이미지로 다시 시도",
+    "manualEntry": "수동 입력",
+    "backToReview": "검토로 돌아가기",
+    "visionUsage": "AI 분석 {remaining}/{total}회 남음",
+    "dailyLimitReached": "오늘 AI 분석 횟수를 모두 사용했습니다",
+    "dailyLimitDescription": "내일 다시 5회 사용할 수 있습니다. 지금은 수동으로 카드 정보를 입력해주세요.",
+    "queuedTitle": "대기열에 추가되었습니다",
+    "queuedDescription": "오늘 AI 분석 횟수를 모두 사용했습니다. 이 카드는 대기열에 저장되었으며, 내일 분석할 수 있습니다.",
+    "viewPending": "대기 목록 보기"
+  },
+  "manualEntry": {
+    "title": "수동 카드 등록",
+    "description": "카드 정보를 직접 입력하여 컬렉션에 추가합니다.",
+    "pokemonName": "포켓몬 이름",
+    "pokemonNamePlaceholder": "예: 피카츄",
+    "cardNumber": "카드 번호",
+    "setId": "세트 ID",
+    "language": "언어",
+    "rarity": "레어도",
+    "rarityPlaceholder": "예: RR, SR, SAR",
+    "collectionInfo": "수집 정보",
+    "purchasePrice": "매입가",
+    "quantity": "수량",
+    "condition": "상태",
+    "notes": "메모",
+    "notesPlaceholder": "카드에 대한 메모를 입력하세요...",
+    "saveToCollection": "컬렉션에 저장",
+    "errors": {
+      "unauthorized": "로그인이 필요합니다",
+      "saveFailed": "저장에 실패했습니다"
+    }
   },
   "result": {
     "title": "AI 분석 결과",
@@ -115,7 +145,17 @@
     "empty": "컬렉션이 비어있습니다",
     "startScanning": "카드를 스캔하여 컬렉션을 시작하세요",
     "totalCards": "총 {count}장",
-    "totalValue": "총 가치"
+    "totalValue": "총 가치",
+    "analyzed": "분석 완료",
+    "pending": "대기 중",
+    "noPendingCards": "대기 중인 카드가 없습니다",
+    "remainingAnalyses": "오늘 {count}회 분석 가능",
+    "analyzeNow": "지금 분석",
+    "status": {
+      "pending": "대기 중",
+      "processing": "분석 중",
+      "failed": "실패"
+    }
   },
   "profile": {
     "title": "프로필",
@@ -126,7 +166,13 @@
     "theme": "테마",
     "darkMode": "다크 모드",
     "lightMode": "라이트 모드",
-    "system": "시스템 설정"
+    "system": "시스템 설정",
+    "loading": "불러오는 중...",
+    "visionUsage": {
+      "title": "AI 분석 사용량",
+      "remaining": "{remaining}/5회 남음",
+      "resetsAt": "자정에 초기화됩니다"
+    }
   },
   "errors": {
     "unauthorized": "로그인이 필요합니다",
@@ -135,6 +181,9 @@
     "imageTooLarge": "이미지가 너무 큽니다 (최대 10MB)",
     "unsupportedFormat": "지원하지 않는 형식입니다. JPG, PNG, WebP, HEIC를 사용해주세요",
     "couldNotReadCard": "카드 정보를 읽을 수 없습니다. 더 밝은 조명에서 다시 시도해주세요",
-    "notPokemonCard": "포켓몬 카드가 아닌 것 같습니다"
+    "notPokemonCard": "포켓몬 카드가 아닌 것 같습니다",
+    "serverError": "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+    "quotaExceeded": "현재 서비스 사용량이 많습니다. 잠시 후 다시 시도해주세요.",
+    "rateLimited": "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."
   }
 }
