@@ -72,15 +72,24 @@ async function analyzeWithOpenAI(
     const errorBody = await response.text();
     console.error("[OpenAI Error Body]", errorBody);
 
-    // Check for common error types
+    // Parse error body to get actual error code
+    let errorCode = "";
+    try {
+      const parsed = JSON.parse(errorBody);
+      errorCode = parsed?.error?.code || "";
+    } catch {
+      // Ignore parsing error
+    }
+
+    // Check for common error types (by code first, then status)
+    if (errorCode === "insufficient_quota" || response.status === 402) {
+      throw new Error("Insufficient quota");
+    }
     if (response.status === 401) {
       throw new Error("Invalid API key");
     }
     if (response.status === 429) {
       throw new Error("Rate limit exceeded");
-    }
-    if (response.status === 402) {
-      throw new Error("Insufficient quota");
     }
 
     throw new Error(`OpenAI API error: ${response.status}`);

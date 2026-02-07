@@ -11,19 +11,16 @@ import {
   XCircle,
   ImageIcon,
   X,
-  ArrowRight,
   RotateCcw,
   Check,
   RefreshCw,
   AlertCircle,
-  Pencil,
   Sparkles,
   Clock,
 } from "lucide-react";
 import { uploadCardImage } from "@/lib/actions/storage";
 import { VisionResponse, ScanResult } from "@/lib/types/vision";
 import { ResultForm } from "./result-form";
-import { ManualEntryForm } from "./manual-entry-form";
 import { ScoredCard } from "@/lib/tcg/hooks";
 import {
   preprocessImage,
@@ -46,7 +43,6 @@ type Step =
   | "uploading"
   | "analyzing"
   | "done"
-  | "manual"
   | "queue"; // Queued for later analysis
 
 interface CardImages {
@@ -73,9 +69,8 @@ export function DualImageScanner() {
     backMimeType: "image/jpeg",
   });
   const [result, setResult] = useState<ScanResult | null>(null);
-  // TODO: Phase 5 - use selectedCard and uploadedPaths for saving to collection
   const [_selectedCard, setSelectedCard] = useState<ScoredCard | null>(null);
-  const [_uploadedPaths, setUploadedPaths] = useState<{
+  const [uploadedPaths, setUploadedPaths] = useState<{
     front?: string;
     back?: string;
   }>({});
@@ -394,16 +389,6 @@ export function DualImageScanner() {
     }
   }, [images]);
 
-  // Switch to manual entry mode
-  const switchToManualEntry = useCallback(() => {
-    setStep("manual");
-  }, []);
-
-  // Handle manual entry completion
-  const handleManualEntrySuccess = useCallback(() => {
-    resetAll();
-  }, [resetAll]);
-
   const retryAnalysis = useCallback(() => {
     setResult(null);
     setStep("review");
@@ -429,8 +414,6 @@ export function DualImageScanner() {
         return t("uploading");
       case "analyzing":
         return t("analyzing");
-      case "manual":
-        return t("manualEntry");
       case "queue":
         return t("queuedTitle");
       case "done":
@@ -526,7 +509,7 @@ export function DualImageScanner() {
       </div>
 
       {/* Vision Usage Indicator */}
-      {!isCheckingUsage && visionUsage && step !== "manual" && step !== "done" && step !== "queue" && (
+      {!isCheckingUsage && visionUsage && step !== "done" && step !== "queue" && (
         <div className="flex items-center justify-center gap-2 text-sm">
           <Sparkles className="h-4 w-4 text-amber-500" />
           <span className="text-muted-foreground">
@@ -713,14 +696,9 @@ export function DualImageScanner() {
               <X className="mr-1 h-4 w-4" />
               {t("startOver")}
             </Button>
-            <Button onClick={switchToManualEntry} variant="outline" className="flex-1">
-              <Pencil className="mr-2 h-4 w-4" />
-              {t("manualEntry")}
-            </Button>
             <Button
               onClick={analyzeCard}
               className="flex-1"
-              disabled={!visionUsage?.canUseVision}
             >
               <Sparkles className="mr-2 h-4 w-4" />
               {t("analyze")}
@@ -731,13 +709,6 @@ export function DualImageScanner() {
               )}
             </Button>
           </>
-        )}
-
-        {step === "manual" && (
-          <Button onClick={() => setStep("review")} variant="outline" className="flex-1">
-            <ArrowRight className="mr-2 h-5 w-5" />
-            {t("backToReview")}
-          </Button>
         )}
 
         {step === "queue" && (
@@ -780,15 +751,6 @@ export function DualImageScanner() {
       )}
 
       {/* Manual Entry Form */}
-      {step === "manual" && (
-        <ManualEntryForm
-          frontImagePath={_uploadedPaths.front}
-          backImagePath={_uploadedPaths.back}
-          onBack={() => setStep("review")}
-          onSuccess={handleManualEntrySuccess}
-        />
-      )}
-
       {/* Result */}
       {result && step === "done" && (
         <>
@@ -796,31 +758,8 @@ export function DualImageScanner() {
             <ResultForm
               visionResult={result.data}
               onCardSelect={handleCardSelect}
+              uploadedImagePath={uploadedPaths.front}
             />
-          ) : result.error === "daily_limit_reached" ? (
-            // Daily limit reached - suggest manual entry
-            <Card className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
-              <CardContent className="p-4">
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-start gap-2 text-amber-700 dark:text-amber-300">
-                    <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
-                    <div>
-                      <p className="font-medium">{t("dailyLimitReached")}</p>
-                      <p className="text-sm text-amber-600 dark:text-amber-400">
-                        {t("dailyLimitDescription")}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={switchToManualEntry}
-                    className="self-start"
-                  >
-                    <Pencil className="mr-2 h-4 w-4" />
-                    {t("manualEntry")}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
           ) : (
             <Card className="border-red-500">
               <CardContent className="p-4">
@@ -829,24 +768,14 @@ export function DualImageScanner() {
                     <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
                     <span>{result.error || t("analysisFailed")}</span>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={retryAnalysis}
-                    >
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      {t("tryAgainSameImages")}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={switchToManualEntry}
-                    >
-                      <Pencil className="mr-2 h-4 w-4" />
-                      {t("manualEntry")}
-                    </Button>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={retryAnalysis}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    {t("tryAgainSameImages")}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

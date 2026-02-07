@@ -174,6 +174,44 @@
       "resetsAt": "자정에 초기화됩니다"
     }
   },
+  "saveCard": {
+    "title": "컬렉션에 추가",
+    "condition": "상태",
+    "quantity": "수량",
+    "purchasePrice": "매입가",
+    "priceOptional": "선택 사항",
+    "cancel": "취소",
+    "save": "저장",
+    "saving": "저장 중...",
+    "saved": "저장 완료"
+  },
+  "condition": {
+    "mint": "민트",
+    "nearMint": "니어민트",
+    "lightlyPlayed": "라이틀리 플레이드",
+    "moderatelyPlayed": "모더레이틀리 플레이드",
+    "heavilyPlayed": "헤비리 플레이드"
+  },
+  "cardDetail": {
+    "title": "카드 상세",
+    "marketPrice": "시세",
+    "purchasePrice": "매입가",
+    "condition": "상태",
+    "quantity": "수량",
+    "notes": "메모",
+    "addedOn": "등록일",
+    "set": "세트",
+    "number": "번호",
+    "rarity": "레어도",
+    "artist": "아티스트",
+    "noPrice": "가격 정보 없음",
+    "delete": "삭제",
+    "deleteConfirm": "정말 이 카드를 삭제하시겠습니까?",
+    "deleteSuccess": "삭제되었습니다",
+    "viewOnTcgPlayer": "TCGPlayer에서 보기",
+    "editNotes": "메모 수정",
+    "saveNotes": "저장"
+  },
   "errors": {
     "unauthorized": "로그인이 필요합니다",
     "notFound": "페이지를 찾을 수 없습니다",

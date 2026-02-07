@@ -102,6 +102,36 @@ export async function addCardVision(entry: VisionCardEntry): Promise<CollectionR
 }
 
 /**
+ * Get a single card by ID
+ */
+export async function getCardById(cardId: string): Promise<CollectionResult> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return { success: false, error: "unauthorized" };
+  }
+
+  const { data, error } = await supabase
+    .from("collections")
+    .select("*")
+    .eq("id", cardId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (error) {
+    console.error("[getCardById] Error:", error.message);
+    return { success: false, error: "not_found" };
+  }
+
+  return { success: true, data: data as CollectionCard };
+}
+
+/**
  * Get user's collection with optional filters
  */
 export async function getCollection(options?: {

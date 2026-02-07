@@ -37,10 +37,12 @@ import {
 } from "@/lib/tcg/hooks";
 import { getCardMarketPrice } from "@/lib/tcg/client";
 import { extractUniqueSets, extractUniqueRarities } from "@/lib/tcg/normalize";
+import { SaveToCollectionDialog } from "./save-to-collection-dialog";
 
 interface ResultFormProps {
   visionResult: VisionResponse;
   onCardSelect?: (card: ScoredCard) => void;
+  uploadedImagePath?: string;
 }
 
 const PAGE_SIZE = 12;
@@ -52,7 +54,7 @@ const LANGUAGE_NAMES: Record<string, string> = {
   en: "English",
 };
 
-export function ResultForm({ visionResult, onCardSelect }: ResultFormProps) {
+export function ResultForm({ visionResult, onCardSelect, uploadedImagePath }: ResultFormProps) {
   const t = useTranslations("result");
 
   // Editable form state initialized from AI result
@@ -66,6 +68,9 @@ export function ResultForm({ visionResult, onCardSelect }: ResultFormProps) {
 
   // Selection state
   const [selectedCard, setSelectedCard] = useState<ScoredCard | null>(null);
+
+  // Save dialog state
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
 
   // Filter state
   const [filterSet, setFilterSet] = useState<string>("");
@@ -584,13 +589,22 @@ export function ResultForm({ visionResult, onCardSelect }: ResultFormProps) {
               >
                 {t("changeSelection")}
               </Button>
-              <Button className="flex-1" disabled>
+              <Button className="flex-1" onClick={() => setIsSaveDialogOpen(true)}>
                 {t("addToCollection")}
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Save to Collection Dialog */}
+      <SaveToCollectionDialog
+        open={isSaveDialogOpen}
+        onOpenChange={setIsSaveDialogOpen}
+        card={selectedCard}
+        visionLanguage={visionResult.language}
+        uploadedImagePath={uploadedImagePath}
+      />
     </div>
   );
 }
