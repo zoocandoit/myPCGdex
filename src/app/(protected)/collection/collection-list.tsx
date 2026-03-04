@@ -3,11 +3,11 @@
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, ImageIcon } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { getCollection, type CollectionListResult } from "@/lib/actions/collection";
 import type { CollectionCard } from "@/lib/types/collection";
+import { CardImage } from "@/components/card-image";
 
 export function CollectionList() {
   const t = useTranslations("collection");
@@ -57,21 +57,13 @@ export function CollectionList() {
           <Link key={card.id} href={`/collection/${card.id}`}>
             <Card className="overflow-hidden transition-all hover:shadow-lg hover:ring-2 hover:ring-primary/50">
               <CardContent className="p-4">
-                {card.tcg_image_url ? (
-                  <div className="relative aspect-[2.5/3.5] overflow-hidden rounded-md bg-muted">
-                    <Image
-                      src={card.tcg_image_url}
-                      alt={card.pokemon_name}
-                      fill
-                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                      className="object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="flex aspect-[2.5/3.5] items-center justify-center rounded-md bg-muted">
-                    <ImageIcon className="h-12 w-12 text-muted-foreground" />
-                  </div>
-                )}
+                <div className="relative aspect-[2.5/3.5] overflow-hidden rounded-md bg-muted">
+                  <CardImage
+                    tcgImageUrl={card.tcg_image_url}
+                    storagePath={card.front_image_path}
+                    alt={card.pokemon_name}
+                  />
+                </div>
 
                 <div className="mt-3">
                   <p className="font-medium">{card.pokemon_name}</p>

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Clock, Trash2, Sparkles, Loader2, AlertCircle, ImageIcon } from "lucide-react";
+import { Clock, Trash2, Sparkles, Loader2, AlertCircle } from "lucide-react";
 import {
   getPendingCards,
   deletePendingCard,
@@ -18,6 +18,7 @@ import {
 } from "@/lib/actions/vision-usage";
 import { addCardVision } from "@/lib/actions/collection";
 import { createClient } from "@/lib/supabase/client";
+import { CardImage } from "@/components/card-image";
 
 export function PendingList() {
   const t = useTranslations("collection");
@@ -174,9 +175,12 @@ export function PendingList() {
         {pendingCards.map((card) => (
           <Card key={card.id}>
             <CardContent className="p-4">
-              {/* Card thumbnail placeholder */}
-              <div className="flex aspect-[2.5/3.5] items-center justify-center overflow-hidden rounded-md bg-muted">
-                <ImageIcon className="h-12 w-12 text-muted-foreground" />
+              {/* Card thumbnail */}
+              <div className="relative aspect-[2.5/3.5] overflow-hidden rounded-md bg-muted">
+                <CardImage
+                  storagePath={card.front_image_path}
+                  alt="Pending card"
+                />
               </div>
 
               {/* Metadata */}

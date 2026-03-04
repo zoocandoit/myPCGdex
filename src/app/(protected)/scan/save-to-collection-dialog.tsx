@@ -49,6 +49,7 @@ export function SaveToCollectionDialog({
   const [condition, setCondition] = useState<CardCondition>("near_mint");
   const [quantity, setQuantity] = useState(1);
   const [purchasePrice, setPurchasePrice] = useState<string>("");
+  const [acquisitionSource, setAcquisitionSource] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
@@ -74,6 +75,7 @@ export function SaveToCollectionDialog({
         condition,
         quantity,
         purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
+        acquisition_source: acquisitionSource.trim() || undefined,
         front_image_path: uploadedImagePath || undefined,
       });
 
@@ -96,6 +98,7 @@ export function SaveToCollectionDialog({
       setCondition("near_mint");
       setQuantity(1);
       setPurchasePrice("");
+      setAcquisitionSource("");
       setIsSaved(false);
       onOpenChange(false);
     }
@@ -188,6 +191,17 @@ export function SaveToCollectionDialog({
               />
             </div>
             <p className="text-xs text-muted-foreground">{t("priceOptional")}</p>
+          </div>
+
+          {/* Acquisition Source (Optional) */}
+          <div className="space-y-2">
+            <Label htmlFor="acquisitionSource">{t("acquisitionSource")}</Label>
+            <Input
+              id="acquisitionSource"
+              placeholder={t("acquisitionSourcePlaceholder")}
+              value={acquisitionSource}
+              onChange={(e) => setAcquisitionSource(e.target.value)}
+            />
           </div>
         </div>
 

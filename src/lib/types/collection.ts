@@ -52,6 +52,7 @@ export interface CollectionCard {
   condition: CardCondition;
   quantity: number;
   notes: string | null;
+  acquisition_source: string | null;
 
   // Images
   front_image_path: string | null;
@@ -77,6 +78,7 @@ export const ManualCardEntrySchema = z.object({
     .default("near_mint"),
   quantity: z.number().int().min(1).default(1),
   notes: z.string().optional(),
+  acquisition_source: z.string().optional(),
   front_image_path: z.string().optional(),
   back_image_path: z.string().optional(),
 });

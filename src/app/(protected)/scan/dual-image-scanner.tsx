@@ -12,20 +12,24 @@ import {
   ImageIcon,
   X,
   RotateCcw,
+  RotateCw,
   Check,
   RefreshCw,
   AlertCircle,
   Sparkles,
   Clock,
+  Edit3,
 } from "lucide-react";
 import { uploadCardImage } from "@/lib/actions/storage";
 import { VisionResponse, ScanResult } from "@/lib/types/vision";
 import { ResultForm } from "./result-form";
+import { ManualEntryForm } from "./manual-entry-form";
 import { ScoredCard } from "@/lib/tcg/hooks";
 import {
   preprocessImage,
   validateImageFile,
   isHeicFile,
+  rotateImage,
 } from "@/lib/image/preprocess";
 import {
   getVisionUsage,
@@ -43,7 +47,8 @@ type Step =
   | "uploading"
   | "analyzing"
   | "done"
-  | "queue"; // Queued for later analysis
+  | "queue" // Queued for later analysis
+  | "manual"; // Manual entry mode
 
 interface CardImages {
   front: string | null;
@@ -231,6 +236,30 @@ export function DualImageScanner() {
     setProcessingError(null);
   }, []);
 
+  // Image rotation state
+  const [isRotating, setIsRotating] = useState<"front" | "back" | null>(null);
+
+  const handleRotate = useCallback(async (target: "front" | "back") => {
+    const currentImage = target === "front" ? images.front : images.back;
+    const currentMimeType = target === "front" ? images.frontMimeType : images.backMimeType;
+
+    if (!currentImage) return;
+
+    setIsRotating(target);
+    try {
+      const rotated = await rotateImage(currentImage, 90, currentMimeType);
+      setImages((prev) => ({
+        ...prev,
+        [target]: rotated.dataUrl,
+        [`${target}MimeType`]: rotated.mimeType,
+      }));
+    } catch (error) {
+      console.error("[Rotate Error]", error);
+    } finally {
+      setIsRotating(null);
+    }
+  }, [images]);
+
   const analyzeCard = useCallback(async () => {
     if (!images.front || !images.back) return;
 
@@ -416,10 +445,20 @@ export function DualImageScanner() {
         return t("analyzing");
       case "queue":
         return t("queuedTitle");
+      case "manual":
+        return t("manualEntry");
       case "done":
         return result?.success ? t("analysisComplete") : t("analysisFailed");
     }
   };
+
+  const goToManualEntry = useCallback(() => {
+    setStep("manual");
+  }, []);
+
+  const backToReview = useCallback(() => {
+    setStep("review");
+  }, []);
 
   const getStepDescription = () => {
     switch (step) {
@@ -451,7 +490,8 @@ export function DualImageScanner() {
         className="hidden"
       />
 
-      {/* Step indicator */}
+      {/* Step indicator - hidden during manual entry */}
+      {step !== "manual" && (
       <div className="flex items-center justify-center gap-2 text-sm">
         <div
           className={`flex h-6 w-6 items-center justify-center rounded-full ${
@@ -499,17 +539,20 @@ export function DualImageScanner() {
           )}
         </div>
       </div>
+      )}
 
-      {/* Title */}
+      {/* Title - hidden during manual entry */}
+      {step !== "manual" && (
       <div className="text-center">
         <h3 className="font-medium">{getStepTitle()}</h3>
         {getStepDescription() && (
           <p className="text-sm text-muted-foreground">{getStepDescription()}</p>
         )}
       </div>
+      )}
 
       {/* Vision Usage Indicator */}
-      {!isCheckingUsage && visionUsage && step !== "done" && step !== "queue" && (
+      {!isCheckingUsage && visionUsage && step !== "done" && step !== "queue" && step !== "manual" && (
         <div className="flex items-center justify-center gap-2 text-sm">
           <Sparkles className="h-4 w-4 text-amber-500" />
           <span className="text-muted-foreground">
@@ -600,12 +643,27 @@ export function DualImageScanner() {
                 <div className="absolute left-2 top-2 rounded bg-black/60 px-2 py-1 text-xs text-white">
                   {t("front")}
                 </div>
-                <button
-                  onClick={retakeFront}
-                  className="absolute right-2 top-2 rounded-full bg-black/50 p-1 text-white hover:bg-black/70"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                </button>
+                <div className="absolute right-2 top-2 flex gap-1">
+                  <button
+                    onClick={() => handleRotate("front")}
+                    disabled={isRotating === "front"}
+                    className="rounded-full bg-black/50 p-1 text-white hover:bg-black/70 disabled:opacity-50"
+                    title={t("rotate")}
+                  >
+                    {isRotating === "front" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RotateCw className="h-4 w-4" />
+                    )}
+                  </button>
+                  <button
+                    onClick={retakeFront}
+                    className="rounded-full bg-black/50 p-1 text-white hover:bg-black/70"
+                    title={t("retake")}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </button>
+                </div>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={images.front!}
@@ -622,12 +680,27 @@ export function DualImageScanner() {
                 <div className="absolute left-2 top-2 rounded bg-black/60 px-2 py-1 text-xs text-white">
                   {t("back")}
                 </div>
-                <button
-                  onClick={retakeBack}
-                  className="absolute right-2 top-2 rounded-full bg-black/50 p-1 text-white hover:bg-black/70"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                </button>
+                <div className="absolute right-2 top-2 flex gap-1">
+                  <button
+                    onClick={() => handleRotate("back")}
+                    disabled={isRotating === "back"}
+                    className="rounded-full bg-black/50 p-1 text-white hover:bg-black/70 disabled:opacity-50"
+                    title={t("rotate")}
+                  >
+                    {isRotating === "back" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RotateCw className="h-4 w-4" />
+                    )}
+                  </button>
+                  <button
+                    onClick={retakeBack}
+                    className="rounded-full bg-black/50 p-1 text-white hover:bg-black/70"
+                    title={t("retake")}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </button>
+                </div>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={images.back!}
@@ -696,6 +769,10 @@ export function DualImageScanner() {
               <X className="mr-1 h-4 w-4" />
               {t("startOver")}
             </Button>
+            <Button onClick={goToManualEntry} variant="outline" size="sm">
+              <Edit3 className="mr-1 h-4 w-4" />
+              {t("manualEntry")}
+            </Button>
             <Button
               onClick={analyzeCard}
               className="flex-1"
@@ -751,6 +828,16 @@ export function DualImageScanner() {
       )}
 
       {/* Manual Entry Form */}
+      {step === "manual" && (
+        <ManualEntryForm
+          frontImage={images.front}
+          backImage={images.back}
+          frontMimeType={images.frontMimeType}
+          backMimeType={images.backMimeType}
+          onBack={backToReview}
+        />
+      )}
+
       {/* Result */}
       {result && step === "done" && (
         <>

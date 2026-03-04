@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,10 +22,10 @@ import {
   Loader2,
   Save,
   X,
-  ImageIcon,
 } from "lucide-react";
-import { CollectionCard, CONDITION_LABELS } from "@/lib/types/collection";
+import { CollectionCard } from "@/lib/types/collection";
 import { deleteCard, updateCard } from "@/lib/actions/collection";
+import { CardImage } from "@/components/card-image";
 
 interface CardDetailViewProps {
   card: CollectionCard;
@@ -104,20 +103,14 @@ export function CardDetailView({ card }: CardDetailViewProps) {
         <Card>
           <CardContent className="p-4">
             <div className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-lg bg-muted">
-              {card.tcg_image_url ? (
-                <Image
-                  src={card.tcg_image_url}
-                  alt={card.pokemon_name}
-                  fill
-                  className="object-contain"
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  priority
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center">
-                  <ImageIcon className="h-16 w-16 text-muted-foreground" />
-                </div>
-              )}
+              <CardImage
+                tcgImageUrl={card.tcg_image_url}
+                storagePath={card.front_image_path}
+                alt={card.pokemon_name}
+                className="object-contain"
+                sizes="(max-width: 768px) 100vw, 50vw"
+                priority
+              />
             </div>
           </CardContent>
         </Card>
@@ -184,10 +177,16 @@ export function CardDetailView({ card }: CardDetailViewProps) {
                   <p className="text-muted-foreground">{t("quantity")}</p>
                   <p className="font-medium">{card.quantity}</p>
                 </div>
-                <div className="col-span-2">
+                <div>
                   <p className="text-muted-foreground">{t("addedOn")}</p>
                   <p className="font-medium">{formatDate(card.collected_at)}</p>
                 </div>
+                {card.acquisition_source && (
+                  <div>
+                    <p className="text-muted-foreground">{t("acquisitionSource")}</p>
+                    <p className="font-medium">{card.acquisition_source}</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

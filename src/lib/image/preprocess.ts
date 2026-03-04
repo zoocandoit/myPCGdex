@@ -330,3 +330,46 @@ export function validateImageFile(file: File): { valid: boolean; error?: string 
 
   return { valid: true };
 }
+
+/**
+ * Rotate a data URL image by specified degrees (90, 180, 270)
+ * Returns a new data URL with the rotated image
+ */
+export async function rotateImage(
+  dataUrl: string,
+  degrees: 90 | 180 | 270,
+  mimeType: string = "image/jpeg",
+  quality: number = 0.92
+): Promise<{ dataUrl: string; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      // Calculate new dimensions
+      const swap = degrees === 90 || degrees === 270;
+      const newWidth = swap ? img.height : img.width;
+      const newHeight = swap ? img.width : img.height;
+
+      // Create canvas
+      const canvas = document.createElement("canvas");
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Failed to get canvas context"));
+        return;
+      }
+
+      // Move to center and rotate
+      ctx.translate(newWidth / 2, newHeight / 2);
+      ctx.rotate((degrees * Math.PI) / 180);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+
+      // Convert back to data URL
+      const rotatedDataUrl = canvas.toDataURL(mimeType, quality);
+      resolve({ dataUrl: rotatedDataUrl, mimeType });
+    };
+    img.onerror = () => reject(new Error("Failed to load image for rotation"));
+    img.src = dataUrl;
+  });
+}
