@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Home, Camera, FolderOpen, User } from "lucide-react";
+import { LayoutDashboard, Camera, FolderOpen, Inbox, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function BottomNav() {
@@ -11,9 +11,10 @@ export function BottomNav() {
   const t = useTranslations("nav");
 
   const navItems = [
-    { href: "/", label: t("home"), icon: Home },
+    { href: "/dashboard", label: "홈", icon: LayoutDashboard },
     { href: "/scan", label: t("scan"), icon: Camera },
     { href: "/collection", label: t("collection"), icon: FolderOpen },
+    { href: "/deals", label: "딜", icon: Inbox },
     { href: "/profile", label: t("profile"), icon: User },
   ];
 

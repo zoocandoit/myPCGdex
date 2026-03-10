@@ -58,6 +58,14 @@ export interface CollectionCard {
   front_image_path: string | null;
   back_image_path: string | null;
 
+  // Graded card info (Phase B)
+  is_graded: boolean;
+  grading_company: string | null;
+  grade: string | null;
+  cert_number: string | null;
+  slab_notes: string | null;
+  external_uid: string | null;
+
   // Meta
   input_method: InputMethod;
   collected_at: string;

@@ -16,39 +16,27 @@ import {
   Check,
   RefreshCw,
   AlertCircle,
-  Sparkles,
-  Clock,
   Edit3,
 } from "lucide-react";
-import { uploadCardImage } from "@/lib/actions/storage";
 import { VisionResponse, ScanResult } from "@/lib/types/vision";
-import { ResultForm } from "./result-form";
+import { ConfirmSaveForm } from "./confirm-save-form";
 import { ManualEntryForm } from "./manual-entry-form";
-import { ScoredCard } from "@/lib/tcg/hooks";
 import {
   preprocessImage,
   validateImageFile,
   isHeicFile,
   rotateImage,
 } from "@/lib/image/preprocess";
-import {
-  getVisionUsage,
-  checkAndIncrementVisionUsage,
-  type VisionUsageResult,
-} from "@/lib/actions/vision-usage";
-import { addToPendingQueue } from "@/lib/actions/pending";
-import { useRouter } from "next/navigation";
+import { ocrCardFront, type OcrProgress } from "@/lib/ocr/card-ocr";
 
 type Step =
   | "front"
   | "back"
   | "converting"
   | "review"
-  | "uploading"
   | "analyzing"
   | "done"
-  | "queue" // Queued for later analysis
-  | "manual"; // Manual entry mode
+  | "manual";
 
 interface CardImages {
   front: string | null;
@@ -64,7 +52,6 @@ interface ProcessingError {
 }
 
 export function DualImageScanner() {
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<Step>("front");
   const [images, setImages] = useState<CardImages>({
@@ -74,39 +61,20 @@ export function DualImageScanner() {
     backMimeType: "image/jpeg",
   });
   const [result, setResult] = useState<ScanResult | null>(null);
-  const [_selectedCard, setSelectedCard] = useState<ScoredCard | null>(null);
-  const [uploadedPaths, setUploadedPaths] = useState<{
-    front?: string;
-    back?: string;
-  }>({});
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === "undefined") return false;
     return "ontouchstart" in window || navigator.maxTouchPoints > 0;
   });
   const [processingError, setProcessingError] =
     useState<ProcessingError | null>(null);
-  // Track which image is being converted (for future UX improvements)
   const [_convertingTarget, setConvertingTarget] = useState<
     "front" | "back" | null
   >(null);
   const pendingFileRef = useRef<File | null>(null);
-
-  // Vision usage tracking
-  const [visionUsage, setVisionUsage] = useState<VisionUsageResult | null>(null);
-  const [isCheckingUsage, setIsCheckingUsage] = useState(true);
+  const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null);
 
   const t = useTranslations("scan");
   const tCommon = useTranslations("common");
-
-  // Check vision usage on mount
-  useEffect(() => {
-    async function checkUsage() {
-      const usage = await getVisionUsage();
-      setVisionUsage(usage);
-      setIsCheckingUsage(false);
-    }
-    checkUsage();
-  }, []);
 
   useEffect(() => {
     const isTouchDevice =
@@ -218,9 +186,8 @@ export function DualImageScanner() {
     });
     setStep("front");
     setResult(null);
-    setSelectedCard(null);
-    setUploadedPaths({});
     setProcessingError(null);
+    setOcrProgress(null);
     pendingFileRef.current = null;
   }, []);
 
@@ -236,7 +203,6 @@ export function DualImageScanner() {
     setProcessingError(null);
   }, []);
 
-  // Image rotation state
   const [isRotating, setIsRotating] = useState<"front" | "back" | null>(null);
 
   const handleRotate = useCallback(async (target: "front" | "back") => {
@@ -260,173 +226,38 @@ export function DualImageScanner() {
     }
   }, [images]);
 
-  const analyzeCard = useCallback(async () => {
-    if (!images.front || !images.back) return;
+  const scanCard = useCallback(async () => {
+    if (!images.front) return;
 
-    // First check current usage without incrementing
-    const currentUsage = await getVisionUsage();
-    setVisionUsage(currentUsage);
-
-    // If limit reached, upload images and add to queue
-    if (!currentUsage.canUseVision) {
-      setStep("uploading");
-      setProcessingError(null);
-
-      try {
-        // Upload front image
-        const frontResult = await uploadCardImage(
-          images.front,
-          images.frontMimeType
-        );
-        if (!frontResult.success || !frontResult.path) {
-          setProcessingError({
-            message: frontResult.error || "Failed to upload front image",
-            canRetry: true,
-            step: "upload",
-          });
-          setStep("review");
-          return;
-        }
-
-        // Upload back image
-        const backResult = await uploadCardImage(
-          images.back,
-          images.backMimeType
-        );
-
-        // Add to pending queue
-        const queueResult = await addToPendingQueue({
-          front_image_path: frontResult.path,
-          back_image_path: backResult.success ? backResult.path : null,
-        });
-
-        if (queueResult.success) {
-          setUploadedPaths({
-            front: frontResult.path,
-            back: backResult.path,
-          });
-          setStep("queue");
-        } else {
-          setProcessingError({
-            message: "Failed to add to queue",
-            canRetry: true,
-            step: "upload",
-          });
-          setStep("review");
-        }
-      } catch (error) {
-        console.error("[Queue Error]", error);
-        setProcessingError({
-          message: error instanceof Error ? error.message : "Failed to queue card",
-          canRetry: true,
-          step: "upload",
-        });
-        setStep("review");
-      }
-      return;
-    }
-
-    // Has remaining uses - proceed with analysis
-    const usageResult = await checkAndIncrementVisionUsage();
-    setVisionUsage(usageResult);
-
-    if (!usageResult.canUseVision) {
-      // Race condition: usage was taken by another request
-      setResult({
-        success: false,
-        error: "daily_limit_reached",
-      });
-      setStep("done");
-      return;
-    }
-
-    setStep("uploading");
+    setStep("analyzing");
     setProcessingError(null);
+    setOcrProgress(null);
 
     try {
-      const frontResult = await uploadCardImage(
+      const data: VisionResponse = await ocrCardFront(
         images.front,
-        images.frontMimeType
+        (p: OcrProgress) => setOcrProgress(p)
       );
-      if (!frontResult.success || !frontResult.signedUrl) {
-        setProcessingError({
-          message: frontResult.error || "Failed to upload front image",
-          canRetry: true,
-          step: "upload",
-        });
-        setStep("review");
-        return;
-      }
-
-      const backResult = await uploadCardImage(
-        images.back,
-        images.backMimeType
-      );
-      if (!backResult.success) {
-        setProcessingError({
-          message: backResult.error || "Failed to upload back image",
-          canRetry: true,
-          step: "upload",
-        });
-        setStep("review");
-        return;
-      }
-
-      setUploadedPaths({
-        front: frontResult.path,
-        back: backResult.path,
-      });
-
-      setStep("analyzing");
-
-      const response = await fetch("/api/vision/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl: frontResult.signedUrl }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        const errorMessage = errorData.error || "Analysis failed";
-
-        setResult({
-          success: false,
-          error: errorMessage,
-          imageUrl: frontResult.signedUrl,
-        });
-        setStep("done");
-        return;
-      }
-
-      const data: VisionResponse = await response.json();
-      setResult({
-        success: true,
-        data,
-        imageUrl: frontResult.signedUrl,
-      });
+      setResult({ success: true, data });
       setStep("done");
     } catch (error) {
-      console.error("[Dual Scan Error]", error);
+      console.error("[OCR Error]", error);
       setResult({
         success: false,
         error:
           error instanceof Error
             ? error.message
-            : "Scan failed. Please check your connection and try again.",
+            : "OCR failed. Please try again.",
       });
       setStep("done");
     }
-  }, [images]);
+  }, [images.front]);
 
   const retryAnalysis = useCallback(() => {
     setResult(null);
+    setOcrProgress(null);
     setStep("review");
     setProcessingError(null);
-  }, []);
-
-  const handleCardSelect = useCallback((card: ScoredCard) => {
-    setSelectedCard(card);
-    console.log("[Card Selected]", card.id, card.name, "Score:", card.accuracyScore);
   }, []);
 
   const getStepTitle = () => {
@@ -439,12 +270,8 @@ export function DualImageScanner() {
         return t("converting");
       case "review":
         return t("step3");
-      case "uploading":
-        return t("uploading");
       case "analyzing":
         return t("analyzing");
-      case "queue":
-        return t("queuedTitle");
       case "manual":
         return t("manualEntry");
       case "done":
@@ -462,18 +289,12 @@ export function DualImageScanner() {
 
   const getStepDescription = () => {
     switch (step) {
-      case "front":
-        return "";
-      case "back":
-        return "";
       case "converting":
         return t("optimizing");
-      case "review":
-        return "";
-      case "uploading":
-        return t("securelyStoring");
       case "analyzing":
-        return t("aiReading");
+        return ocrProgress
+          ? `${ocrProgress.status} (${Math.round(ocrProgress.progress * 100)}%)`
+          : t("aiReading");
       default:
         return "";
     }
@@ -492,75 +313,62 @@ export function DualImageScanner() {
 
       {/* Step indicator - hidden during manual entry */}
       {step !== "manual" && (
-      <div className="flex items-center justify-center gap-2 text-sm">
-        <div
-          className={`flex h-6 w-6 items-center justify-center rounded-full ${
-            step === "front" || step === "converting"
-              ? "bg-primary text-primary-foreground"
-              : images.front
-                ? "bg-green-500 text-white"
-                : "bg-muted text-muted-foreground"
-          }`}
-        >
-          {images.front ? <Check className="h-4 w-4" /> : "1"}
-        </div>
-        <div className="h-px w-8 bg-muted" />
-        <div
-          className={`flex h-6 w-6 items-center justify-center rounded-full ${
-            step === "back"
-              ? "bg-primary text-primary-foreground"
-              : images.back
-                ? "bg-green-500 text-white"
-                : "bg-muted text-muted-foreground"
-          }`}
-        >
-          {images.back ? <Check className="h-4 w-4" /> : "2"}
-        </div>
-        <div className="h-px w-8 bg-muted" />
-        <div
-          className={`flex h-6 w-6 items-center justify-center rounded-full ${
-            step === "review" || step === "uploading" || step === "analyzing"
-              ? "bg-primary text-primary-foreground"
-              : step === "done"
-                ? result?.success
+        <div className="flex items-center justify-center gap-2 text-sm">
+          <div
+            className={`flex h-6 w-6 items-center justify-center rounded-full ${
+              step === "front" || step === "converting"
+                ? "bg-primary text-primary-foreground"
+                : images.front
                   ? "bg-green-500 text-white"
-                  : "bg-red-500 text-white"
-                : "bg-muted text-muted-foreground"
-          }`}
-        >
-          {step === "done" ? (
-            result?.success ? (
-              <Check className="h-4 w-4" />
+                  : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {images.front ? <Check className="h-4 w-4" /> : "1"}
+          </div>
+          <div className="h-px w-8 bg-muted" />
+          <div
+            className={`flex h-6 w-6 items-center justify-center rounded-full ${
+              step === "back"
+                ? "bg-primary text-primary-foreground"
+                : images.back
+                  ? "bg-green-500 text-white"
+                  : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {images.back ? <Check className="h-4 w-4" /> : "2"}
+          </div>
+          <div className="h-px w-8 bg-muted" />
+          <div
+            className={`flex h-6 w-6 items-center justify-center rounded-full ${
+              step === "review" || step === "analyzing"
+                ? "bg-primary text-primary-foreground"
+                : step === "done"
+                  ? result?.success
+                    ? "bg-green-500 text-white"
+                    : "bg-red-500 text-white"
+                  : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {step === "done" ? (
+              result?.success ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <XCircle className="h-4 w-4" />
+              )
             ) : (
-              <XCircle className="h-4 w-4" />
-            )
-          ) : (
-            "3"
-          )}
+              "3"
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {/* Title - hidden during manual entry */}
       {step !== "manual" && (
-      <div className="text-center">
-        <h3 className="font-medium">{getStepTitle()}</h3>
-        {getStepDescription() && (
-          <p className="text-sm text-muted-foreground">{getStepDescription()}</p>
-        )}
-      </div>
-      )}
-
-      {/* Vision Usage Indicator */}
-      {!isCheckingUsage && visionUsage && step !== "done" && step !== "queue" && step !== "manual" && (
-        <div className="flex items-center justify-center gap-2 text-sm">
-          <Sparkles className="h-4 w-4 text-amber-500" />
-          <span className="text-muted-foreground">
-            {t("visionUsage", {
-              remaining: visionUsage.remainingToday,
-              total: 5,
-            })}
-          </span>
+        <div className="text-center">
+          <h3 className="font-medium">{getStepTitle()}</h3>
+          {getStepDescription() && (
+            <p className="text-sm text-muted-foreground">{getStepDescription()}</p>
+          )}
         </div>
       )}
 
@@ -713,18 +521,20 @@ export function DualImageScanner() {
         </div>
       )}
 
-      {/* Loading state */}
-      {(step === "uploading" || step === "analyzing") && (
+      {/* OCR analyzing state */}
+      {step === "analyzing" && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center gap-4 py-12">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
             <div className="text-center">
               <p className="font-medium text-muted-foreground">
-                {step === "uploading" ? t("uploading") : t("analyzing")}
+                {t("analyzing")}
               </p>
-              <p className="text-xs text-muted-foreground">
-                {step === "uploading" ? t("securelyStoring") : t("aiReading")}
-              </p>
+              {ocrProgress && (
+                <p className="text-xs text-muted-foreground">
+                  {ocrProgress.status} ({Math.round(ocrProgress.progress * 100)}%)
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -773,59 +583,19 @@ export function DualImageScanner() {
               <Edit3 className="mr-1 h-4 w-4" />
               {t("manualEntry")}
             </Button>
-            <Button
-              onClick={analyzeCard}
-              className="flex-1"
-            >
-              <Sparkles className="mr-2 h-4 w-4" />
+            <Button onClick={scanCard} className="flex-1">
               {t("analyze")}
-              {visionUsage && (
-                <span className="ml-1 text-xs opacity-70">
-                  ({visionUsage.remainingToday})
-                </span>
-              )}
             </Button>
           </>
         )}
 
-        {step === "queue" && (
-          <>
-            <Button onClick={resetAll} variant="outline" className="flex-1">
-              <Upload className="mr-2 h-5 w-5" />
-              {t("scanAnother")}
-            </Button>
-            <Button onClick={() => router.push("/collection?tab=pending")} className="flex-1">
-              {t("viewPending")}
-            </Button>
-          </>
-        )}
-
-        {step === "done" && (
+        {step === "done" && !result?.success && (
           <Button onClick={resetAll} variant="outline" className="flex-1">
             <Upload className="mr-2 h-5 w-5" />
             {t("scanAnother")}
           </Button>
         )}
       </div>
-
-      {/* Queue Success */}
-      {step === "queue" && (
-        <Card className="border-blue-500 bg-blue-50 dark:bg-blue-950/20">
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-start gap-2 text-blue-700 dark:text-blue-300">
-                <Clock className="mt-0.5 h-5 w-5 flex-shrink-0" />
-                <div>
-                  <p className="font-medium">{t("queuedTitle")}</p>
-                  <p className="text-sm text-blue-600 dark:text-blue-400">
-                    {t("queuedDescription")}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Manual Entry Form */}
       {step === "manual" && (
@@ -842,10 +612,12 @@ export function DualImageScanner() {
       {result && step === "done" && (
         <>
           {result.success && result.data ? (
-            <ResultForm
+            <ConfirmSaveForm
               visionResult={result.data}
-              onCardSelect={handleCardSelect}
-              uploadedImagePath={uploadedPaths.front}
+              frontImageData={images.front ?? undefined}
+              frontMimeType={images.frontMimeType}
+              frontImagePreview={images.front ?? undefined}
+              onRetake={retryAnalysis}
             />
           ) : (
             <Card className="border-red-500">
