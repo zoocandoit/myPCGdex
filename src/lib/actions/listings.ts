@@ -28,7 +28,7 @@ export interface ListingListResult {
 export async function createListing(input: CreateListingInput): Promise<ListingResult> {
   const parsed = CreateListingSchema.safeParse(input);
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message ?? "유효하지 않은 입력값" };
+    return { success: false, error: parsed.error.issues[0]?.message ?? "유효하지 않은 입력값" };
   }
 
   const supabase = await createClient();
@@ -108,7 +108,7 @@ export async function updateListing(
 ): Promise<ListingResult> {
   const parsed = UpdateListingSchema.safeParse(input);
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message ?? "유효하지 않은 입력값" };
+    return { success: false, error: parsed.error.issues[0]?.message ?? "유효하지 않은 입력값" };
   }
 
   const supabase = await createClient();

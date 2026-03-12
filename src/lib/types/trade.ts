@@ -23,6 +23,7 @@ export interface Acquisition {
   id: string;
   user_id: string;
   collection_id: string | null;
+  card_name: string | null;
   status: AcquisitionStatus;
   source_platform: SourcePlatform | null;
   source_url: string | null;
@@ -37,6 +38,7 @@ export interface Acquisition {
 
 export const CreateAcquisitionSchema = z.object({
   collection_id: z.string().uuid().optional(),
+  card_name: z.string().optional(),
   status: z.enum(["candidate", "bought", "canceled"]).default("candidate"),
   source_platform: z
     .enum(["danggeun", "bunjang", "offline", "friend", "ebay", "other"])

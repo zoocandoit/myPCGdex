@@ -30,6 +30,7 @@ export function AddDealButton() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const [cardName, setCardName] = useState("");
   const [platform, setPlatform] = useState<string>("");
   const [url, setUrl] = useState("");
   const [askingPrice, setAskingPrice] = useState("");
@@ -38,6 +39,7 @@ export function AddDealButton() {
   const [notes, setNotes] = useState("");
 
   function reset() {
+    setCardName("");
     setPlatform("");
     setUrl("");
     setAskingPrice("");
@@ -51,6 +53,7 @@ export function AddDealButton() {
     setLoading(true);
 
     const result = await createAcquisition({
+      card_name: cardName.trim() || undefined,
       source_platform: platform as "danggeun" | "bunjang" | "offline" | "friend" | "ebay" | "other" | undefined,
       source_url: url || undefined,
       asking_price: askingPrice ? Number(askingPrice) : undefined,
@@ -86,6 +89,21 @@ export function AddDealButton() {
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* 카드명 - 가장 중요 */}
+            <div className="space-y-1.5">
+              <Label htmlFor="card-name">
+                카드명 <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="card-name"
+                placeholder="예: 피카츄 ex SAR, 리자몽 AR"
+                value={cardName}
+                onChange={(e) => setCardName(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+
             <div className="space-y-1.5">
               <Label htmlFor="platform">플랫폼</Label>
               <Select value={platform} onValueChange={setPlatform}>
@@ -103,7 +121,7 @@ export function AddDealButton() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="url">링크 URL</Label>
+              <Label htmlFor="url">링크 URL (선택)</Label>
               <Input
                 id="url"
                 type="url"
@@ -151,11 +169,11 @@ export function AddDealButton() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="notes">메모</Label>
+              <Label htmlFor="notes">메모 (선택)</Label>
               <Textarea
                 id="notes"
-                placeholder="카드 정보, 협상 내용 등"
-                rows={3}
+                placeholder="협상 내용, 카드 상태 등"
+                rows={2}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
@@ -165,7 +183,7 @@ export function AddDealButton() {
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 취소
               </Button>
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" disabled={loading || !cardName.trim()}>
                 {loading ? "등록 중..." : "등록"}
               </Button>
             </DialogFooter>

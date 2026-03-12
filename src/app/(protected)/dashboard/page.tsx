@@ -29,7 +29,7 @@ export default async function DashboardPage() {
 
   return (
     <main className="container mx-auto px-4 py-6">
-      <h1 className="mb-6 text-2xl font-bold">Dashboard</h1>
+      <h1 className="mb-6 text-2xl font-bold">대시보드</h1>
 
       <DashboardStats
         totalCards={collectionStats.totalCards}
@@ -47,8 +47,8 @@ export default async function DashboardPage() {
           emptyLabel="등록된 매입 후보가 없습니다"
           items={(candidateDeals.data ?? []).map((d) => ({
             id: d.id,
-            label: d.source_platform ?? "기타",
-            sublabel: d.source_url ?? d.notes ?? "",
+            label: d.card_name ?? d.notes ?? "카드명 없음",
+            sublabel: d.source_platform ? (d.source_platform === "danggeun" ? "당근마켓" : d.source_platform === "bunjang" ? "번개장터" : d.source_platform) : "기타",
             value: d.asking_price ? `₩${d.asking_price.toLocaleString()}` : "-",
             badge: "후보",
             badgeVariant: "secondary" as const,
@@ -76,9 +76,9 @@ export default async function DashboardPage() {
           emptyLabel="판매 내역이 없습니다"
           items={(recentSales.data ?? []).map((s) => ({
             id: s.id,
-            label: `판매 완료`,
+            label: `$${s.sold_price.toLocaleString()}`,
             sublabel: new Date(s.sold_at).toLocaleDateString("ko-KR"),
-            value: s.net_payout !== null ? `₩${s.net_payout.toLocaleString()}` : "-",
+            value: s.net_payout !== null ? `$${s.net_payout.toFixed(2)}` : "-",
             badge: "완료",
             badgeVariant: "outline" as const,
           }))}

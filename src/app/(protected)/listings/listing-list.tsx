@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, MoreVertical, CheckCircle, XCircle, Trash2, DollarSign } from "lucide-react";
+import {
+  ExternalLink, MoreVertical, CheckCircle, XCircle,
+  Trash2, DollarSign, TrendingUp, AlertTriangle,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,6 +54,7 @@ export function ListingList({ listings, status, cards }: ListingListProps) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
   const [settleTarget, setSettleTarget] = useState<Listing | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Listing | null>(null);
 
   if (listings.length === 0) {
     return (
@@ -83,6 +87,7 @@ export function ListingList({ listings, status, cards }: ListingListProps) {
     const result = await deleteListing(id);
     if (result.success) {
       toast.success("삭제되었습니다");
+      setDeleteTarget(null);
       router.refresh();
     } else {
       toast.error(result.error ?? "삭제 중 오류가 발생했습니다");
@@ -102,7 +107,7 @@ export function ListingList({ listings, status, cards }: ListingListProps) {
               card={card}
               isLoading={loading === listing.id}
               onStatusChange={handleStatusChange}
-              onDelete={handleDelete}
+              onDelete={() => setDeleteTarget(listing)}
               onSettle={() => setSettleTarget(listing)}
             />
           );
@@ -120,6 +125,38 @@ export function ListingList({ listings, status, cards }: ListingListProps) {
           }}
         />
       )}
+
+      {/* 삭제 확인 다이얼로그 */}
+      {deleteTarget && (
+        <Dialog open onOpenChange={() => setDeleteTarget(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                리스팅 삭제
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-semibold text-foreground">
+                {cardMap.get(deleteTarget.collection_id)?.pokemon_name ?? "이 리스팅"}
+              </span>
+              을(를) 삭제하시겠습니까?
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+                취소
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={loading === deleteTarget.id}
+                onClick={() => handleDelete(deleteTarget.id)}
+              >
+                {loading === deleteTarget.id ? "삭제 중..." : "삭제"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }
@@ -136,16 +173,38 @@ function ListingCard({
   card?: CollectionCard;
   isLoading: boolean;
   onStatusChange: (id: string, status: ListingStatus) => void;
-  onDelete: (id: string) => void;
+  onDelete: () => void;
   onSettle: () => void;
 }) {
   const platformLabel = LISTING_PLATFORM_LABELS[listing.platform]?.ko ?? listing.platform;
   const statusLabel = LISTING_STATUS_LABELS[listing.status]?.ko ?? listing.status;
 
+  const isEbay = listing.platform === "ebay";
+  const isUSD = listing.currency === "USD";
   const priceStr =
     listing.currency === "USD"
       ? `$${listing.listed_price.toLocaleString()}`
+      : listing.currency === "JPY"
+      ? `¥${listing.listed_price.toLocaleString()}`
       : `₩${listing.listed_price.toLocaleString()}`;
+
+  // eBay USD 리스팅의 경우 예상 실수령액 계산
+  const ebayEstimate =
+    isEbay && isUSD
+      ? calculateEbayPayout({
+          soldPrice: listing.listed_price,
+          shippingCharged: 0,
+          shippingCost: 0,
+          isInternational: false,
+        })
+      : null;
+
+  // 예상 수익 (원가 대비)
+  const costBasis = card?.purchase_price ?? null;
+  const estimatedPnL =
+    ebayEstimate && costBasis
+      ? ebayEstimate.netPayout - costBasis
+      : null;
 
   const statusVariant: Record<ListingStatus, "default" | "secondary" | "outline" | "destructive"> =
     {
@@ -195,6 +254,21 @@ function ListingCard({
               </a>
             )}
 
+            {/* eBay 예상 수익 (active/draft 상태에서만) */}
+            {ebayEstimate && (listing.status === "active" || listing.status === "draft") && (
+              <div className="mt-1.5 flex items-center gap-2 text-xs">
+                <TrendingUp className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground">
+                  예상 수령: <span className="font-medium text-foreground">${ebayEstimate.netPayout.toFixed(2)}</span>
+                </span>
+                {estimatedPnL !== null && (
+                  <span className={estimatedPnL >= 0 ? "text-green-600 font-medium" : "text-red-500 font-medium"}>
+                    ({estimatedPnL >= 0 ? "+" : ""}₩{Math.round(estimatedPnL).toLocaleString()})
+                  </span>
+                )}
+              </div>
+            )}
+
             <p className="text-xs text-muted-foreground mt-1">
               {new Date(listing.created_at).toLocaleDateString("ko-KR")}
               {listing.started_at &&
@@ -230,7 +304,7 @@ function ListingCard({
               {(listing.status === "draft" || listing.status === "canceled") && (
                 <DropdownMenuItem
                   className="text-destructive"
-                  onClick={() => onDelete(listing.id)}
+                  onClick={onDelete}
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   삭제
@@ -266,7 +340,6 @@ function SettleDialog({
   const [buyerRegion, setBuyerRegion] = useState<string>("domestic");
   const [loading, setLoading] = useState(false);
 
-  // Auto-calculate eBay fees when USD listing
   const isInternational = buyerRegion !== "domestic";
   const breakdown =
     isEbay && isUSD
@@ -277,6 +350,11 @@ function SettleDialog({
           isInternational,
         })
       : null;
+
+  // 예상 수익
+  const costBasis = card?.purchase_price ?? null;
+  const estimatedPnL =
+    breakdown && costBasis !== null ? breakdown.netPayout - costBasis : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -304,7 +382,7 @@ function SettleDialog({
     setLoading(false);
   }
 
-  const currency = isUSD ? "$" : "₩";
+  const currency = isUSD ? "$" : listing.currency === "JPY" ? "¥" : "₩";
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -384,16 +462,16 @@ function SettleDialog({
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Final Value Fee</span>
-                <span>-${breakdown.finalValueFee.toFixed(2)}</span>
+                <span className="text-red-500">-${breakdown.finalValueFee.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">고정 수수료</span>
-                <span>-${breakdown.fixedFee.toFixed(2)}</span>
+                <span className="text-red-500">-${breakdown.fixedFee.toFixed(2)}</span>
               </div>
               {breakdown.internationalFee > 0 && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">국제 수수료</span>
-                  <span>-${breakdown.internationalFee.toFixed(2)}</span>
+                  <span className="text-red-500">-${breakdown.internationalFee.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between">
@@ -404,6 +482,12 @@ function SettleDialog({
                 <span>실수령액</span>
                 <span className="text-primary">${breakdown.netPayout.toFixed(2)}</span>
               </div>
+              {estimatedPnL !== null && (
+                <div className={`flex justify-between font-bold pt-0.5 ${estimatedPnL >= 0 ? "text-green-600" : "text-red-500"}`}>
+                  <span>예상 수익</span>
+                  <span>{estimatedPnL >= 0 ? "+" : ""}₩{Math.round(estimatedPnL).toLocaleString()}</span>
+                </div>
+              )}
             </div>
           )}
 

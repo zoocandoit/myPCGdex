@@ -30,7 +30,7 @@ export async function createAcquisition(
 ): Promise<AcquisitionResult> {
   const parsed = CreateAcquisitionSchema.safeParse(input);
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message ?? "유효하지 않은 입력값" };
+    return { success: false, error: parsed.error.issues[0]?.message ?? "유효하지 않은 입력값" };
   }
 
   const supabase = await createClient();
@@ -108,7 +108,7 @@ export async function updateAcquisition(
 ): Promise<AcquisitionResult> {
   const parsed = UpdateAcquisitionSchema.safeParse(input);
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message ?? "유효하지 않은 입력값" };
+    return { success: false, error: parsed.error.issues[0]?.message ?? "유효하지 않은 입력값" };
   }
 
   const supabase = await createClient();

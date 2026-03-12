@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, MoreVertical, CheckCircle, XCircle, Trash2 } from "lucide-react";
+import { ExternalLink, MoreVertical, CheckCircle, XCircle, Trash2, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { type Acquisition, SOURCE_PLATFORM_LABELS, ACQUISITION_STATUS_LABELS } from "@/lib/types/trade";
 import { updateAcquisition, deleteAcquisition } from "@/lib/actions/deals";
 import { useRouter } from "next/navigation";
@@ -24,6 +31,7 @@ interface DealListProps {
 export function DealList({ deals, status }: DealListProps) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Acquisition | null>(null);
 
   if (deals.length === 0) {
     return (
@@ -58,6 +66,7 @@ export function DealList({ deals, status }: DealListProps) {
     const result = await deleteAcquisition(id);
     if (result.success) {
       toast.success("삭제되었습니다");
+      setDeleteTarget(null);
       router.refresh();
     } else {
       toast.error(result.error ?? "삭제 중 오류가 발생했습니다");
@@ -66,17 +75,51 @@ export function DealList({ deals, status }: DealListProps) {
   }
 
   return (
-    <div className="space-y-3">
-      {deals.map((deal) => (
-        <DealCard
-          key={deal.id}
-          deal={deal}
-          isLoading={loading === deal.id}
-          onStatusChange={handleStatusChange}
-          onDelete={handleDelete}
-        />
-      ))}
-    </div>
+    <>
+      <div className="space-y-3">
+        {deals.map((deal) => (
+          <DealCard
+            key={deal.id}
+            deal={deal}
+            isLoading={loading === deal.id}
+            onStatusChange={handleStatusChange}
+            onDelete={() => setDeleteTarget(deal)}
+          />
+        ))}
+      </div>
+
+      {/* 삭제 확인 다이얼로그 */}
+      {deleteTarget && (
+        <Dialog open onOpenChange={() => setDeleteTarget(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                매물 삭제
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-semibold text-foreground">
+                {deleteTarget.card_name ?? "이 매물"}
+              </span>
+              을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+                취소
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={loading === deleteTarget.id}
+                onClick={() => handleDelete(deleteTarget.id)}
+              >
+                {loading === deleteTarget.id ? "삭제 중..." : "삭제"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }
 
@@ -89,7 +132,7 @@ function DealCard({
   deal: Acquisition;
   isLoading: boolean;
   onStatusChange: (id: string, status: Acquisition["status"]) => void;
-  onDelete: (id: string) => void;
+  onDelete: () => void;
 }) {
   const platformLabel = deal.source_platform
     ? SOURCE_PLATFORM_LABELS[deal.source_platform]?.ko ?? deal.source_platform
@@ -102,9 +145,13 @@ function DealCard({
     <Card className={isLoading ? "opacity-60 pointer-events-none" : ""}>
       <CardContent className="px-4 py-3">
         <div className="flex items-start gap-3">
-          {/* Left: platform badge + main info */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
+            {/* 카드명 — 최상단 */}
+            {deal.card_name && (
+              <p className="font-semibold text-sm mb-1 truncate">{deal.card_name}</p>
+            )}
+
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <Badge variant="outline" className="text-xs shrink-0">
                 {platformLabel}
               </Badge>
@@ -128,7 +175,7 @@ function DealCard({
                 href={deal.source_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 text-sm text-primary hover:underline truncate mb-1"
+                className="flex items-center gap-1 text-xs text-primary hover:underline truncate mb-1"
               >
                 <ExternalLink className="h-3 w-3 shrink-0" />
                 <span className="truncate">{deal.source_url}</span>
@@ -141,26 +188,31 @@ function DealCard({
             )}
 
             {/* Price */}
-            <div className="mt-2 flex items-center gap-3 text-sm">
+            <div className="mt-2 flex items-center gap-3 text-sm flex-wrap">
               {deal.asking_price && (
-                <span className="text-muted-foreground">
+                <span className="text-muted-foreground text-xs">
                   호가: <span className="font-medium text-foreground">₩{deal.asking_price.toLocaleString()}</span>
                 </span>
               )}
               {deal.negotiated_price && (
-                <span className="text-muted-foreground">
+                <span className="text-muted-foreground text-xs">
                   협의가: <span className="font-medium text-foreground">₩{deal.negotiated_price.toLocaleString()}</span>
                 </span>
               )}
-              {deal.fees_cost > 0 && (
-                <span className="text-muted-foreground">
+              {(deal.fees_cost ?? 0) > 0 && (
+                <span className="text-muted-foreground text-xs">
                   부대비용: <span className="font-medium text-foreground">+₩{deal.fees_cost.toLocaleString()}</span>
                 </span>
               )}
             </div>
-            {totalCost && deal.fees_cost > 0 && (
+            {totalCost && (deal.fees_cost ?? 0) > 0 && (
               <p className="text-xs font-semibold text-primary mt-0.5">
                 총 원가: ₩{totalCost.toLocaleString()}
+              </p>
+            )}
+            {totalCost && (deal.fees_cost ?? 0) === 0 && (
+              <p className="text-xs font-semibold mt-0.5">
+                ₩{totalCost.toLocaleString()}
               </p>
             )}
 
@@ -169,7 +221,7 @@ function DealCard({
             </p>
           </div>
 
-          {/* Right: actions */}
+          {/* Actions */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
@@ -191,7 +243,7 @@ function DealCard({
               )}
               <DropdownMenuItem
                 className="text-destructive"
-                onClick={() => onDelete(deal.id)}
+                onClick={onDelete}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 삭제

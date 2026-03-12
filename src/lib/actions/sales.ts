@@ -37,7 +37,7 @@ export interface PnLSummary {
 export async function createSale(input: CreateSaleInput): Promise<SaleResult> {
   const parsed = CreateSaleSchema.safeParse(input);
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message ?? "유효하지 않은 입력값" };
+    return { success: false, error: parsed.error.issues[0]?.message ?? "유효하지 않은 입력값" };
   }
 
   const supabase = await createClient();

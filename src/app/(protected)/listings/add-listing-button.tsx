@@ -71,6 +71,7 @@ export function AddListingButton({ cards }: AddListingButtonProps) {
       platform,
       currency,
       listed_price: Number(listedPrice),
+      quantity: 1,
       title: title || undefined,
       listing_url: listingUrl || undefined,
       status: "draft",
