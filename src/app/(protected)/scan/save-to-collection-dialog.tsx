@@ -33,6 +33,8 @@ interface SaveToCollectionDialogProps {
   card: ScoredCard | null;
   visionLanguage: string;
   uploadedImagePath?: string;
+  /** If provided, called after save instead of redirecting to /collection */
+  onSaved?: (collectionId: string) => void;
 }
 
 export function SaveToCollectionDialog({

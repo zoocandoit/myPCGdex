@@ -27,7 +27,10 @@ export interface PnLSummary {
   total_fees: number;
   total_net_payout: number;
   total_cost_basis: number;
+  total_purchase_price: number;
+  total_acquisition_fees: number;
   realized_pnl: number;
+  margin_pct: number | null;
   sale_count: number;
 }
 
@@ -66,11 +69,32 @@ export async function createSale(input: CreateSaleInput): Promise<SaleResult> {
   if (error) return { success: false, error: error.message };
 
   // Mark the linked listing as sold
-  await supabase
+  const { data: soldListing } = await supabase
     .from("listings")
     .update({ status: "sold", ended_at: new Date().toISOString() })
     .eq("id", d.listing_id)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("collection_id, quantity")
+    .single();
+
+  // Decrement collection quantity by the listing's quantity
+  if (soldListing?.collection_id) {
+    const { data: collCard } = await supabase
+      .from("collections")
+      .select("quantity")
+      .eq("id", soldListing.collection_id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (collCard && collCard.quantity > 0) {
+      const newQty = Math.max(0, collCard.quantity - (soldListing.quantity ?? 1));
+      await supabase
+        .from("collections")
+        .update({ quantity: newQty })
+        .eq("id", soldListing.collection_id)
+        .eq("user_id", user.id);
+    }
+  }
 
   return { success: true, data: data as Sale };
 }
@@ -163,28 +187,72 @@ export async function getPnLSummary(options?: {
     total_net_payout += s.net_payout ?? 0;
   }
 
-  // Fetch cost basis from linked collection cards
+  // Fetch cost basis: sale → listing → collection → acquisition fees
   const listingIds = salesData.map((s) => s.listing_id);
   const { data: listingsData } = await supabase
     .from("listings")
-    .select("id, collection_id")
+    .select("id, collection_id, quantity")
     .in("id", listingIds)
     .eq("user_id", user.id);
 
-  const collectionIds = (listingsData ?? []).map((l) => l.collection_id).filter(Boolean);
-  let total_cost_basis = 0;
+  const listingMap = new Map(
+    (listingsData ?? []).map((l) => [l.id, l])
+  );
+
+  const collectionIds = (listingsData ?? [])
+    .map((l) => l.collection_id)
+    .filter(Boolean) as string[];
+
+  let total_purchase_price = 0;
+  let total_acquisition_fees = 0;
 
   if (collectionIds.length > 0) {
+    // Fetch collection purchase prices
     const { data: cardsData } = await supabase
       .from("collections")
       .select("id, purchase_price")
       .in("id", collectionIds)
       .eq("user_id", user.id);
 
-    for (const card of cardsData ?? []) {
-      total_cost_basis += card.purchase_price ?? 0;
+    // Fetch linked acquisition fees (lot-level incidental costs)
+    const { data: acquisitionsData } = await supabase
+      .from("acquisitions")
+      .select("collection_id, fees_cost")
+      .in("collection_id", collectionIds)
+      .eq("user_id", user.id)
+      .eq("status", "bought");
+
+    const cardMap = new Map((cardsData ?? []).map((c) => [c.id, c]));
+    const acqFeeMap = new Map<string, number>();
+    for (const acq of acquisitionsData ?? []) {
+      // Sum fees if multiple acquisitions for same card
+      acqFeeMap.set(acq.collection_id, (acqFeeMap.get(acq.collection_id) ?? 0) + (acq.fees_cost ?? 0));
+    }
+
+    // For each sale, allocate cost proportional to listing quantity
+    for (const sale of salesData) {
+      const listing = listingMap.get(sale.listing_id);
+      if (!listing) continue;
+      const collId = listing.collection_id;
+      const listingQty = listing.quantity ?? 1;
+
+      const card = cardMap.get(collId);
+      const rawPurchase = card?.purchase_price ?? 0;
+      const rawFees = acqFeeMap.get(collId) ?? 0;
+
+      // Allocate cost per unit sold (partial sale support)
+      const unitPurchase = rawPurchase / Math.max(listingQty, 1);
+      const unitFees = rawFees / Math.max(listingQty, 1);
+
+      total_purchase_price += unitPurchase;
+      total_acquisition_fees += unitFees;
     }
   }
+
+  const total_cost_basis = total_purchase_price + total_acquisition_fees;
+  const realized_pnl = total_net_payout - total_cost_basis;
+  const margin_pct =
+    total_cost_basis > 0 ? Math.round((realized_pnl / total_cost_basis) * 10000) / 100 : null;
 
   return {
     success: true,
@@ -193,7 +261,10 @@ export async function getPnLSummary(options?: {
       total_fees,
       total_net_payout,
       total_cost_basis,
-      realized_pnl: total_net_payout - total_cost_basis,
+      total_purchase_price,
+      total_acquisition_fees,
+      realized_pnl,
+      margin_pct,
       sale_count: salesData.length,
     },
   };

@@ -7,6 +7,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +17,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   ArrowLeft,
   ExternalLink,
   Trash2,
@@ -22,10 +31,14 @@ import {
   Loader2,
   Save,
   X,
+  Tag,
 } from "lucide-react";
 import { CollectionCard } from "@/lib/types/collection";
 import { deleteCard, updateCard } from "@/lib/actions/collection";
+import { createListing } from "@/lib/actions/listings";
 import { CardImage } from "@/components/card-image";
+import { PriceChart } from "./price-chart";
+import { toast } from "sonner";
 
 interface CardDetailViewProps {
   card: CollectionCard;
@@ -41,6 +54,16 @@ export function CardDetailView({ card }: CardDetailViewProps) {
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notes, setNotes] = useState(card.notes || "");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+
+  // Listing quick-create
+  const [isListingOpen, setIsListingOpen] = useState(false);
+  const [listingPlatform, setListingPlatform] = useState<"ebay" | "bunjang" | "danggeun" | "other">("ebay");
+  const [listingPrice, setListingPrice] = useState(
+    card.market_price ? String(card.market_price.toFixed(2)) : ""
+  );
+  const [listingCurrency, setListingCurrency] = useState<"KRW" | "USD" | "JPY">("USD");
+  const [listingUrl, setListingUrl] = useState("");
+  const [isCreatingListing, setIsCreatingListing] = useState(false);
 
   const handleDelete = async () => {
     setIsDeleting(true);
@@ -61,31 +84,47 @@ export function CardDetailView({ card }: CardDetailViewProps) {
     setIsSavingNotes(false);
   };
 
+  const handleCreateListing = async () => {
+    const price = parseFloat(listingPrice);
+    if (isNaN(price) || price <= 0) {
+      toast.error("올바른 가격을 입력하세요");
+      return;
+    }
+    setIsCreatingListing(true);
+    const res = await createListing({
+      collection_id: card.id,
+      platform: listingPlatform,
+      listed_price: price,
+      currency: listingCurrency,
+      status: "draft",
+      quantity: card.quantity,
+      listing_url: listingUrl.trim() || undefined,
+      title: card.pokemon_name,
+    });
+    if (res.success) {
+      toast.success("리스팅이 초안으로 생성되었습니다");
+      setIsListingOpen(false);
+      router.push("/listings");
+    } else {
+      toast.error(res.error ?? "리스팅 생성 실패");
+    }
+    setIsCreatingListing(false);
+  };
+
   const getConditionLabel = (condition: string) => {
     switch (condition) {
-      case "mint":
-        return tCondition("mint");
-      case "near_mint":
-        return tCondition("nearMint");
-      case "lightly_played":
-        return tCondition("lightlyPlayed");
-      case "moderately_played":
-        return tCondition("moderatelyPlayed");
-      case "heavily_played":
-        return tCondition("heavilyPlayed");
-      default:
-        return condition;
+      case "mint": return tCondition("mint");
+      case "near_mint": return tCondition("nearMint");
+      case "lightly_played": return tCondition("lightlyPlayed");
+      case "moderately_played": return tCondition("moderatelyPlayed");
+      case "heavily_played": return tCondition("heavilyPlayed");
+      default: return condition;
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
-  };
-
-  const formatPrice = (price: number | null) => {
-    if (price === null || price === undefined) return t("noPrice");
-    return `$${price.toFixed(2)}`;
-  };
+  const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString();
+  const formatPrice = (price: number | null) =>
+    price === null || price === undefined ? t("noPrice") : `$${price.toFixed(2)}`;
 
   return (
     <div className="space-y-6">
@@ -141,6 +180,24 @@ export function CardDetailView({ card }: CardDetailViewProps) {
                     <p className="font-medium">{card.artist}</p>
                   </div>
                 )}
+                {card.is_graded && (
+                  <>
+                    <div>
+                      <p className="text-muted-foreground">등급사</p>
+                      <p className="font-medium">{card.grading_company ?? "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">등급</p>
+                      <p className="font-bold text-yellow-600">{card.grade ?? "-"}</p>
+                    </div>
+                    {card.cert_number && (
+                      <div className="col-span-2">
+                        <p className="text-muted-foreground">인증번호</p>
+                        <p className="font-medium font-mono">{card.cert_number}</p>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -162,6 +219,21 @@ export function CardDetailView({ card }: CardDetailViewProps) {
                   </p>
                 </div>
               </div>
+              {card.market_price && card.purchase_price && (
+                <div className="mt-2 text-sm">
+                  <span
+                    className={
+                      card.market_price >= card.purchase_price
+                        ? "text-green-600 font-medium"
+                        : "text-red-500 font-medium"
+                    }
+                  >
+                    {card.market_price >= card.purchase_price ? "+" : ""}
+                    {((card.market_price - card.purchase_price) / card.purchase_price * 100).toFixed(1)}%
+                    미실현 손익
+                  </span>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -193,6 +265,9 @@ export function CardDetailView({ card }: CardDetailViewProps) {
         </div>
       </div>
 
+      {/* Price Chart */}
+      <PriceChart collectionId={card.id} currentMarketPrice={card.market_price} />
+
       {/* Notes Section */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -214,11 +289,7 @@ export function CardDetailView({ card }: CardDetailViewProps) {
                 rows={4}
               />
               <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={handleSaveNotes}
-                  disabled={isSavingNotes}
-                >
+                <Button size="sm" onClick={handleSaveNotes} disabled={isSavingNotes}>
                   {isSavingNotes ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
@@ -239,17 +310,21 @@ export function CardDetailView({ card }: CardDetailViewProps) {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              {card.notes || "-"}
-            </p>
+            <p className="text-sm text-muted-foreground">{card.notes || "-"}</p>
           )}
         </CardContent>
       </Card>
 
       {/* Actions */}
-      <div className="flex gap-4">
+      <div className="flex flex-wrap gap-3">
+        {/* 리스팅 생성 */}
+        <Button variant="outline" className="flex-1" onClick={() => setIsListingOpen(true)}>
+          <Tag className="mr-2 h-4 w-4" />
+          리스팅 생성
+        </Button>
+
         {card.tcg_card_id && (
-          <Button variant="outline" asChild className="flex-1">
+          <Button variant="outline" className="flex-1" asChild>
             <a
               href={`https://www.tcgplayer.com/search/pokemon/product?q=${encodeURIComponent(card.pokemon_name)}`}
               target="_blank"
@@ -260,14 +335,85 @@ export function CardDetailView({ card }: CardDetailViewProps) {
             </a>
           </Button>
         )}
-        <Button
-          variant="destructive"
-          onClick={() => setIsDeleteDialogOpen(true)}
-        >
+        <Button variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>
           <Trash2 className="mr-2 h-4 w-4" />
           {t("delete")}
         </Button>
       </div>
+
+      {/* Listing Quick-Create Dialog */}
+      <Dialog open={isListingOpen} onOpenChange={setIsListingOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>리스팅 생성 — {card.pokemon_name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>플랫폼</Label>
+                <Select
+                  value={listingPlatform}
+                  onValueChange={(v) => setListingPlatform(v as typeof listingPlatform)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ebay">eBay</SelectItem>
+                    <SelectItem value="bunjang">번개장터</SelectItem>
+                    <SelectItem value="danggeun">당근마켓</SelectItem>
+                    <SelectItem value="other">기타</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>통화</Label>
+                <Select
+                  value={listingCurrency}
+                  onValueChange={(v) => setListingCurrency(v as typeof listingCurrency)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD ($)</SelectItem>
+                    <SelectItem value="KRW">KRW (₩)</SelectItem>
+                    <SelectItem value="JPY">JPY (¥)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>판매 희망가</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={listingPrice}
+                onChange={(e) => setListingPrice(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>리스팅 URL (선택)</Label>
+              <Input
+                placeholder="https://…"
+                value={listingUrl}
+                onChange={(e) => setListingUrl(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsListingOpen(false)}>
+              취소
+            </Button>
+            <Button onClick={handleCreateListing} disabled={isCreatingListing || !listingPrice}>
+              {isCreatingListing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              초안 생성
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
@@ -282,18 +428,10 @@ export function CardDetailView({ card }: CardDetailViewProps) {
               onClick={() => setIsDeleteDialogOpen(false)}
               disabled={isDeleting}
             >
-              {t("notes") === "메모" ? "취소" : "Cancel"}
+              취소
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={isDeleting}
-            >
-              {isDeleting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="mr-2 h-4 w-4" />
-              )}
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
               {t("delete")}
             </Button>
           </DialogFooter>

@@ -131,14 +131,26 @@ export async function getCardById(cardId: string): Promise<CollectionResult> {
   return { success: true, data: data as CollectionCard };
 }
 
+export type CollectionSortBy =
+  | "date_desc"
+  | "date_asc"
+  | "price_desc"
+  | "price_asc"
+  | "name_asc"
+  | "name_desc";
+
 /**
- * Get user's collection with optional filters
+ * Get user's collection with optional filters, search, and sort
  */
 export async function getCollection(options?: {
   limit?: number;
   offset?: number;
   setId?: string;
   language?: string;
+  condition?: string;
+  isGraded?: boolean;
+  search?: string;
+  sortBy?: CollectionSortBy;
 }): Promise<CollectionListResult> {
   const supabase = await createClient();
 
@@ -154,21 +166,35 @@ export async function getCollection(options?: {
   let query = supabase
     .from("collections")
     .select("*", { count: "exact" })
-    .eq("user_id", user.id)
-    .order("collected_at", { ascending: false });
+    .eq("user_id", user.id);
 
-  if (options?.setId) {
-    query = query.eq("set_id", options.setId);
+  if (options?.setId) query = query.eq("set_id", options.setId);
+  if (options?.language) query = query.eq("language", options.language);
+  if (options?.condition) query = query.eq("condition", options.condition);
+  if (options?.isGraded !== undefined) query = query.eq("is_graded", options.isGraded);
+  if (options?.search) query = query.ilike("pokemon_name", `%${options.search}%`);
+
+  switch (options?.sortBy ?? "date_desc") {
+    case "date_asc":
+      query = query.order("collected_at", { ascending: true });
+      break;
+    case "price_desc":
+      query = query.order("purchase_price", { ascending: false, nullsFirst: false });
+      break;
+    case "price_asc":
+      query = query.order("purchase_price", { ascending: true, nullsFirst: false });
+      break;
+    case "name_asc":
+      query = query.order("pokemon_name", { ascending: true });
+      break;
+    case "name_desc":
+      query = query.order("pokemon_name", { ascending: false });
+      break;
+    default:
+      query = query.order("collected_at", { ascending: false });
   }
 
-  if (options?.language) {
-    query = query.eq("language", options.language);
-  }
-
-  if (options?.limit) {
-    query = query.limit(options.limit);
-  }
-
+  if (options?.limit) query = query.limit(options.limit);
   if (options?.offset) {
     query = query.range(options.offset, options.offset + (options.limit || 20) - 1);
   }

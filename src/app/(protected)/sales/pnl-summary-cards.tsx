@@ -12,18 +12,13 @@ interface PnLSummaryCardsProps {
 }
 
 export function PnLSummaryCards({ summary, from, to }: PnLSummaryCardsProps) {
-  const marginPct =
-    summary.total_cost_basis > 0
-      ? (summary.realized_pnl / summary.total_cost_basis) * 100
-      : null;
-
   const fromLabel = from ? new Date(from).toLocaleDateString("ko-KR", { month: "long", day: "numeric" }) : "";
   const toLabel = to ? new Date(to).toLocaleDateString("ko-KR", { month: "long", day: "numeric" }) : "현재";
   const periodLabel = from ? `${fromLabel} ~ ${toLabel}` : "전체";
 
   return (
-    <div>
-      <p className="text-xs text-muted-foreground mb-3">기간: {periodLabel}</p>
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">기간: {periodLabel}</p>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <StatCard
           title="판매 건수"
@@ -50,12 +45,17 @@ export function PnLSummaryCards({ summary, from, to }: PnLSummaryCardsProps) {
         <StatCard
           title="총 원가"
           value={`₩${Math.round(summary.total_cost_basis).toLocaleString()}`}
+          subtitle={
+            summary.total_acquisition_fees > 0
+              ? `매입비 +₩${Math.round(summary.total_acquisition_fees).toLocaleString()}`
+              : undefined
+          }
           icon={<Minus className="h-4 w-4" />}
         />
         <PnLCard
           title="실현 손익"
           value={summary.realized_pnl}
-          subtitle={marginPct !== null ? `${marginPct.toFixed(1)}% 마진` : undefined}
+          subtitle={summary.margin_pct !== null ? `${summary.margin_pct.toFixed(1)}% 마진` : undefined}
         />
       </div>
     </div>
@@ -67,12 +67,14 @@ function StatCard({
   value,
   unit,
   icon,
+  subtitle,
   valueClassName,
 }: {
   title: string;
   value: string;
   unit?: string;
   icon?: React.ReactNode;
+  subtitle?: string;
   valueClassName?: string;
 }) {
   return (
@@ -86,6 +88,7 @@ function StatCard({
           {value}
           {unit && <span className="ml-0.5 text-sm font-normal text-muted-foreground">{unit}</span>}
         </p>
+        {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
       </CardContent>
     </Card>
   );
